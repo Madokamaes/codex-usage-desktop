@@ -1,10 +1,13 @@
 use crate::{
+    accounts::{load_current_account, CurrentAccount},
     codex_environment::selected_codex_environment,
     date::{date_key_in_timezone, resolve_app_timezone},
     db::{
-        delete_missing_daily_rows, delete_missing_session_file_rollups, query_session_file_rollup,
-        record_scan_run, upsert_daily_rows, upsert_session_file_rollups, SessionFileRollup,
-        SessionQuotaRollup,
+        account_tracking_initialized, assigned_session_paths, delete_missing_daily_rows,
+        delete_missing_session_file_rollups, initialize_account_tracking,
+        insert_session_account_assignments, query_session_file_rollup, record_scan_run,
+        record_usage_account, upsert_daily_rows, upsert_session_file_rollups,
+        SessionAccountAssignment, SessionFileRollup, SessionQuotaRollup,
     },
     pricing::{calculate_cost_usd, PricingSource},
     types::{
@@ -69,7 +72,21 @@ pub fn scan_codex_usage(
     let total_started = Instant::now();
     let timezone = timezone.unwrap_or_else(resolve_app_timezone);
     let scanned_at = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let scan = load_daily_rows(db, codex_home, &timezone, &scanned_at, pricing_source)?;
+    let codex_home = codex_home.unwrap_or_else(default_codex_home);
+    let tracking_initialized = account_tracking_initialized(db)?;
+    let current_account = load_current_account(&codex_home);
+    if let Some(account) = &current_account {
+        record_usage_account(db, account, &scanned_at)?;
+    }
+    let assignment_account = tracking_initialized.then_some(current_account).flatten();
+    let scan = load_daily_rows(
+        db,
+        Some(codex_home),
+        &timezone,
+        &scanned_at,
+        pricing_source,
+        assignment_account.as_ref(),
+    )?;
     let db_started = Instant::now();
 
     upsert_daily_rows(db, &scan.rows)?;
@@ -80,8 +97,10 @@ pub fn scan_codex_usage(
         .collect::<Vec<_>>();
     delete_missing_daily_rows(db, &active_dates)?;
     upsert_session_file_rollups(db, &scan.changed_rollups, &scanned_at)?;
+    insert_session_account_assignments(db, &scan.new_assignments, &scanned_at)?;
     delete_missing_session_file_rollups(db, &scan.active_paths)?;
     record_scan_run(db, &scanned_at, &timezone, scan.rows.len())?;
+    initialize_account_tracking(db, &scanned_at)?;
 
     let mut metrics = scan.metrics;
     metrics.db_ms = db_started.elapsed().as_millis();
@@ -133,6 +152,7 @@ struct DailyRowsScan {
     rows: Vec<DailyUsageRow>,
     changed_rollups: Vec<SessionFileRollup>,
     active_paths: Vec<String>,
+    new_assignments: Vec<SessionAccountAssignment>,
     metrics: ScanMetrics,
 }
 
@@ -142,6 +162,7 @@ fn load_daily_rows(
     timezone: &str,
     updated_at: &str,
     pricing_source: &PricingSource,
+    assignment_account: Option<&CurrentAccount>,
 ) -> Result<DailyRowsScan, String> {
     let parse_started = Instant::now();
     let files = find_session_files(codex_home)?;
@@ -152,9 +173,18 @@ fn load_daily_rows(
     let mut all_rows = Vec::new();
     let mut changed_rollups = Vec::new();
     let mut active_paths = Vec::with_capacity(files.len());
+    let assigned_paths = assigned_session_paths(db)?;
+    let mut new_assignments = Vec::new();
 
     for file in files {
         active_paths.push(file.cache_key.clone());
+        if !assigned_paths.contains(&file.cache_key) {
+            new_assignments.push(SessionAccountAssignment {
+                path: file.cache_key.clone(),
+                account_id: assignment_account.map(|account| account.id.clone()),
+                account_label: assignment_account.map(|account| account.label.clone()),
+            });
+        }
         if let Some(mut rollup) =
             query_session_file_rollup(db, &file.cache_key, file.modified_at_ms, file.size_bytes)?
         {
@@ -199,6 +229,7 @@ fn load_daily_rows(
         rows,
         changed_rollups,
         active_paths,
+        new_assignments,
         metrics,
     })
 }
@@ -1243,6 +1274,7 @@ mod tests {
             "UTC",
             "2026-05-08T00:00:00.000Z",
             &pricing_source,
+            None,
         )
         .unwrap();
         assert!(unchanged.changed_rollups.is_empty());

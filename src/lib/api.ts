@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 export type RangeKey = "1d" | "2d" | "7d" | "14d" | "30d" | "60d" | "90d" | "180d" | "365d" | string;
 export type ExportFormat = "xlsx" | "markdown";
 
+export type UsageAccount = {
+  id: string;
+  label: string;
+  isUnknown: boolean;
+};
+
 export type OverviewResponse = {
   range: RangeKey;
   days: number;
@@ -194,12 +200,12 @@ export async function setBackgroundRefreshInterval(minutes: number): Promise<voi
   return invoke<void>("set_background_refresh_interval", { minutes });
 }
 
-export async function fetchOverview(range: RangeKey): Promise<OverviewResponse> {
-  return invoke<OverviewResponse>("fetch_overview", { range });
+export async function fetchOverview(range: RangeKey, accountId?: string | null): Promise<OverviewResponse> {
+  return invoke<OverviewResponse>("fetch_overview", { range, ...(accountId ? { accountId } : {}) });
 }
 
-export async function fetchProjectAnalytics(project: string, range: RangeKey): Promise<ProjectAnalyticsResponse> {
-  return invoke<ProjectAnalyticsResponse>("fetch_project_analytics", { project, range });
+export async function fetchProjectAnalytics(project: string, range: RangeKey, accountId?: string | null): Promise<ProjectAnalyticsResponse> {
+  return invoke<ProjectAnalyticsResponse>("fetch_project_analytics", { project, range, ...(accountId ? { accountId } : {}) });
 }
 
 export async function fetchModelPricingCatalog(): Promise<ModelPricingCatalogResponse> {
@@ -210,8 +216,14 @@ export async function refreshModelPricing(): Promise<ModelPricingCatalogResponse
   return invoke<ModelPricingCatalogResponse>("refresh_model_pricing");
 }
 
-export async function fetchMonthlyUsage(): Promise<MonthlyUsageResponse> {
-  return invoke<MonthlyUsageResponse>("fetch_monthly_usage");
+export async function fetchMonthlyUsage(accountId?: string | null): Promise<MonthlyUsageResponse> {
+  return accountId
+    ? invoke<MonthlyUsageResponse>("fetch_monthly_usage", { accountId })
+    : invoke<MonthlyUsageResponse>("fetch_monthly_usage");
+}
+
+export async function fetchUsageAccounts(): Promise<UsageAccount[]> {
+  return invoke<UsageAccount[]>("fetch_usage_accounts");
 }
 
 export async function fetchCodexLimits(): Promise<CodexLimitsResponse> {
@@ -238,8 +250,8 @@ export async function resetUsageState(): Promise<void> {
   return invoke<void>("reset_usage_state");
 }
 
-export async function exportUsage(range: RangeKey, format: ExportFormat, path: string): Promise<ExportResponse> {
-  return invoke<ExportResponse>("export_usage", { range, format, path });
+export async function exportUsage(range: RangeKey, format: ExportFormat, path: string, accountId?: string | null): Promise<ExportResponse> {
+  return invoke<ExportResponse>("export_usage", { range, format, path, ...(accountId ? { accountId } : {}) });
 }
 
 export type UpdateCheckResponse = {
@@ -345,8 +357,10 @@ export type ProjectReference = {
   codexProjectRoot?: string;
 };
 
-export async function fetchSessionDetails(): Promise<SessionDetailRow[]> {
-  return invoke<SessionDetailRow[]>("fetch_session_details");
+export async function fetchSessionDetails(accountId?: string | null): Promise<SessionDetailRow[]> {
+  return accountId
+    ? invoke<SessionDetailRow[]>("fetch_session_details", { accountId })
+    : invoke<SessionDetailRow[]>("fetch_session_details");
 }
 
 export type SessionReplayDetail = {

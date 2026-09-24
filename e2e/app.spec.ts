@@ -11,6 +11,12 @@ describe("Codex Usage Desktop page", () => {
     expect(hasTauriRuntime).toBe(true);
   });
 
+  it("exposes the usage account filter", async () => {
+    const accountFilter = $('[data-testid="account-filter"]');
+    await accountFilter.waitForDisplayed({ timeout: 10_000 });
+    await expect(accountFilter).toHaveValue("");
+  });
+
   it("shows both 24-hour and 48-hour reset probabilities", async () => {
     const forecast = $('[data-testid="quota-forecast"]');
     const forecast24h = $('[data-forecast-horizon="24h"]');

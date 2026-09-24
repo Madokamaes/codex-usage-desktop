@@ -26,6 +26,11 @@
     "command": "命令",
     "percent": "占比"
   },
+  "accounts": {
+    "filter_label": "按账号筛选用量",
+    "all": "全部账号",
+    "unknown": "未知账号（升级前会话）"
+  },
   "header": {
     "app_title": "Codex Usage Desktop",
     "upgrade": "升级至 v{{version}}",

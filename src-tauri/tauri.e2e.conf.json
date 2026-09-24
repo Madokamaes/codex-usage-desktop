@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBuildCommand": "pnpm build --mode e2e"
+    "beforeBuildCommand": "node node_modules/vite/bin/vite.js build --mode e2e"
   },
   "app": {
     "withGlobalTauri": true,

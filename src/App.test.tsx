@@ -1780,15 +1780,64 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getAllByText("3,400").length).toBeGreaterThan(0));
 
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(7));
     expect(latestResetInvokeMock).toHaveBeenCalledTimes(1);
     expect(resetHistoryInvokeMock).toHaveBeenCalledWith({ days: 14 });
     expect(resetHistoryInvokeMock).toHaveBeenCalledTimes(1);
     expect(invokeMock).toHaveBeenNthCalledWith(1, "fetch_codex_limits");
-    expect(invokeMock).toHaveBeenNthCalledWith(2, "fetch_overview", { range: "30d" });
-    expect(invokeMock).toHaveBeenNthCalledWith(3, "scan_usage");
-    expect(invokeMock).toHaveBeenNthCalledWith(4, "check_for_updates");
-    expect(invokeMock).toHaveBeenNthCalledWith(5, "fetch_overview", { range: "30d" });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "fetch_usage_accounts");
+    expect(invokeMock).toHaveBeenNthCalledWith(3, "fetch_overview", { range: "30d" });
+    expect(invokeMock).toHaveBeenNthCalledWith(4, "scan_usage");
+    expect(invokeMock).toHaveBeenNthCalledWith(5, "check_for_updates");
+    expect(invokeMock).toHaveBeenNthCalledWith(6, "fetch_overview", { range: "30d" });
+    expect(invokeMock).toHaveBeenNthCalledWith(7, "fetch_usage_accounts");
+  });
+
+  it("filters dashboard usage by the account that opened the session", async () => {
+    invokeMock.mockImplementation(async (
+      command: string,
+      args?: { range?: string; accountId?: string },
+    ) => {
+      if (command === "fetch_codex_limits") return limits(80);
+      if (command === "fetch_usage_accounts") {
+        return [
+          { id: "account-a", label: "alice@example.com", isUnknown: false },
+          { id: "__unknown__", label: "Unknown account", isUnknown: true },
+        ];
+      }
+      if (command === "fetch_overview" && args?.range === "30d") {
+        return overview(args.accountId === "account-a" ? 42 : 1600);
+      }
+      if (command === "scan_usage") return scan(0);
+      if (command === "check_for_updates") {
+        return {
+          hasUpdate: false,
+          currentVersion: "1.0.0",
+          latestVersion: "1.0.0",
+          latestTag: "v1.0.0",
+          releaseName: null,
+          releaseNotes: null,
+          releaseUrl: "",
+        };
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    render(<App />);
+
+    const accountFilter = await screen.findByRole("combobox", { name: "Filter usage by account" });
+    expect(accountFilter).toHaveValue("");
+
+    await userEvent.selectOptions(accountFilter, "account-a");
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("fetch_overview", {
+        range: "30d",
+        accountId: "account-a",
+      });
+    });
+    expect(accountFilter).toHaveValue("account-a");
+    expect(screen.getAllByText("42").length).toBeGreaterThan(0);
   });
 
   it("keeps the cached overview visible when the background scan fails", async () => {

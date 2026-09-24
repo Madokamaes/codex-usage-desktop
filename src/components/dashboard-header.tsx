@@ -1,5 +1,5 @@
-import { Sparkles, RefreshCcw } from "lucide-react";
-import type { OverviewResponse, UpdateCheckResponse } from "@/lib/api";
+import { Sparkles, RefreshCcw, UserRound } from "lucide-react";
+import type { OverviewResponse, UpdateCheckResponse, UsageAccount } from "@/lib/api";
 import type { UpdateInstallStatus, UpdateProgressState } from "@/hooks/use-usage-dashboard";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,9 @@ type DashboardHeaderProps = {
   overview: OverviewResponse | null;
   scanMessage: string;
   lastRescanDurationMs: number | null;
+  usageAccounts: UsageAccount[];
+  selectedAccountId: string | null;
+  onAccountChange: (accountId: string | null) => void;
 };
 
 export function DashboardHeader({
@@ -40,6 +43,9 @@ export function DashboardHeader({
   overview,
   scanMessage,
   lastRescanDurationMs,
+  usageAccounts,
+  selectedAccountId,
+  onAccountChange,
 }: DashboardHeaderProps) {
   const { t } = useTranslation();
 
@@ -198,6 +204,25 @@ export function DashboardHeader({
         </div>
 
         <div className="pb-2 shrink-0 flex items-center gap-3">
+          <label className="relative flex items-center">
+            <UserRound className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <span className="sr-only">{t("accounts.filter_label")}</span>
+            <select
+              data-testid="account-filter"
+              aria-label={t("accounts.filter_label")}
+              value={selectedAccountId ?? ""}
+              onChange={(event) => onAccountChange(event.target.value || null)}
+              disabled={isBusy}
+              className="h-8 max-w-[220px] rounded-md border border-border bg-surface pl-8 pr-7 text-xs font-medium text-foreground outline-none transition focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">{t("accounts.all")}</option>
+              {usageAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.isUnknown ? t("accounts.unknown") : account.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {overview && (
             <div className="hidden sm:flex flex-col items-end text-right leading-tight select-none">
               <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">

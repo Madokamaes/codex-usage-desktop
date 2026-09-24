@@ -12,6 +12,7 @@ import {
   fetchCodexResetHistory,
   fetchMonthlyUsage,
   fetchOverview,
+  fetchUsageAccounts,
   resetUsageState,
   type CodexLimitsResponse,
   type CodexQuotaForecastResponse,
@@ -20,6 +21,7 @@ import {
   type MonthlyUsageResponse,
   type OverviewResponse,
   type RangeKey,
+  type UsageAccount,
   checkForUpdates,
   downloadAndInstallUpdate,
   openUrl,
@@ -121,6 +123,8 @@ export function useUsageDashboard() {
   const [view, setView] = useState<DashboardView>("dashboard");
   const [range, setRange] = useState<RangeKey>("30d");
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [usageAccounts, setUsageAccounts] = useState<UsageAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [monthlyUsage, setMonthlyUsage] = useState<MonthlyUsageResponse | null>(null);
   const [codexLimits, setCodexLimits] = useState<CodexLimitsResponse | null>(null);
   const [codexLimitsError, setCodexLimitsError] = useState<string | null>(null);
@@ -301,23 +305,32 @@ export function useUsageDashboard() {
   const updateCheckInFlightRef = useRef<Promise<void> | null>(null);
   const windowActivationInFlightRef = useRef(false);
 
-  const loadOverview = useEffectEvent(async (nextRange: RangeKey) => {
-    const data = await fetchOverview(nextRange);
+  const loadOverview = useEffectEvent(async (nextRange: RangeKey, accountId = selectedAccountId) => {
+    const data = await fetchOverview(nextRange, accountId);
     setOverview(data);
     setError(null);
   });
 
-  const loadMonthlyUsage = useEffectEvent(async () => {
-    const data = await fetchMonthlyUsage();
+  const loadMonthlyUsage = useEffectEvent(async (accountId = selectedAccountId) => {
+    const data = await fetchMonthlyUsage(accountId);
     setMonthlyUsage(data);
     setError(null);
   });
 
-  const loadSessions = useEffectEvent(async () => {
-    const data = await fetchSessionDetails();
+  const loadSessions = useEffectEvent(async (accountId = selectedAccountId) => {
+    const data = await fetchSessionDetails(accountId);
     setSessions(data);
     setHasLoadedSessions(true);
     setError(null);
+  });
+
+  const loadUsageAccounts = useEffectEvent(async () => {
+    try {
+      const data = await fetchUsageAccounts();
+      setUsageAccounts(Array.isArray(data) ? data : []);
+    } catch (_) {
+      setUsageAccounts([]);
+    }
   });
 
   const loadCodexLimits = useEffectEvent(async (options?: { force?: boolean }) => {
@@ -397,6 +410,7 @@ export function useUsageDashboard() {
       const isForeground = document.visibilityState === "visible" || options?.force === true;
       if (isForeground || filesParsed > 0) {
         await loadOverview(range);
+        await loadUsageAccounts();
 
         if (view === "monthly") {
           await loadMonthlyUsage();
@@ -573,7 +587,7 @@ export function useUsageDashboard() {
       void loadCodexQuotaForecast();
       void loadLatestCodexReset();
       void loadRecentCodexResets();
-      await loadOverview(range);
+      await Promise.all([loadUsageAccounts(), loadOverview(range)]);
       setBootstrapped(true);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load overview.");
@@ -607,6 +621,7 @@ export function useUsageDashboard() {
     const isForeground = document.visibilityState === "visible";
     if (isForeground || filesParsed > 0) {
       await loadOverview(range);
+      await loadUsageAccounts();
       if (view === "monthly") {
         await loadMonthlyUsage();
       }
@@ -888,6 +903,32 @@ export function useUsageDashboard() {
     }
   }
 
+  async function handleAccountChange(accountId: string | null) {
+    setSelectedAccountId(accountId);
+    setMonthlyUsage(null);
+    setSessions([]);
+    setHasLoadedSessions(false);
+    setIsLoading(true);
+    try {
+      await loadOverview(range, accountId);
+      if (view === "monthly") {
+        setIsMonthlyLoading(true);
+        await loadMonthlyUsage(accountId);
+      }
+      if (view === "sessions") {
+        setIsSessionsLoading(true);
+        await loadSessions(accountId);
+      }
+      setError(null);
+    } catch (accountError) {
+      setError(errorMessage(accountError, "Failed to switch usage account."));
+    } finally {
+      setIsLoading(false);
+      setIsMonthlyLoading(false);
+      setIsSessionsLoading(false);
+    }
+  }
+
   async function handlePricingRefreshed() {
     await loadOverview(range);
   }
@@ -981,7 +1022,7 @@ export function useUsageDashboard() {
     setIsExporting(format);
 
     try {
-      const exported = await exportUsage(range, format, selectedPath);
+      const exported = await exportUsage(range, format, selectedPath, selectedAccountId);
       setScanMessage({
         key: "hero.exported_message",
         values: { range: getRangeLabel(range, t), path: exported.path },
@@ -1104,6 +1145,8 @@ export function useUsageDashboard() {
     view,
     range,
     overview,
+    usageAccounts,
+    selectedAccountId,
     monthlyUsage,
     codexLimits,
     codexLimitsError,
@@ -1140,6 +1183,7 @@ export function useUsageDashboard() {
     isSessionsLoading,
     handleViewChange,
     handleRangeChange,
+    handleAccountChange,
     handlePricingRefreshed,
     handleRefresh,
     handleLimitsRefresh,

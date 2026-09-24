@@ -1,3 +1,4 @@
+mod accounts;
 mod codex_environment;
 mod codex_limits;
 mod codex_projects;
@@ -28,7 +29,7 @@ use types::{
     CodexWindowActivationResponse, ExportResponse, ModelPricingCatalogResponse,
     MonthlyUsageResponse, OverviewResponse, ProjectAnalyticsResponse, ScanResponse,
     SessionDetailRow, SessionReplayDetail, UpdateCheckResponse, UpdateDownloadProgress,
-    UpdateInstallResponse, UsageRefreshResponse,
+    UpdateInstallResponse, UsageAccount, UsageRefreshResponse,
 };
 
 const DEFAULT_BACKGROUND_RESCAN_INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -199,6 +200,7 @@ fn set_background_refresh_interval(
 async fn fetch_overview(
     state: tauri::State<'_, AppState>,
     range: String,
+    account_id: Option<String>,
 ) -> Result<OverviewResponse, String> {
     let database_path = state.database_path.clone();
     let pricing_cache_path = state.pricing_cache_path.clone();
@@ -206,7 +208,13 @@ async fn fetch_overview(
     tauri::async_runtime::spawn_blocking(move || {
         let mut db = db::open_database(&database_path)?;
         let pricing_source = load_usage_pricing(&mut db, &pricing_cache_path)?;
-        let mut overview = overview::get_overview(&db, &range, None, &pricing_source)?;
+        let mut overview = overview::get_overview_for_account(
+            &db,
+            &range,
+            None,
+            &pricing_source,
+            account_id.as_deref(),
+        )?;
         codex_projects::CodexProjectCatalog::load(&scanner::default_codex_home())
             .enrich_overview(&mut overview);
         Ok(overview)
@@ -220,14 +228,21 @@ async fn fetch_project_analytics(
     state: tauri::State<'_, AppState>,
     project: String,
     range: String,
+    account_id: Option<String>,
 ) -> Result<ProjectAnalyticsResponse, String> {
     let database_path = state.database_path.clone();
     let pricing_cache_path = state.pricing_cache_path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut db = db::open_database(&database_path)?;
         let pricing_source = load_usage_pricing(&mut db, &pricing_cache_path)?;
-        let mut analytics =
-            overview::get_project_analytics(&db, &project, &range, None, &pricing_source)?;
+        let mut analytics = overview::get_project_analytics_for_account(
+            &db,
+            &project,
+            &range,
+            None,
+            &pricing_source,
+            account_id.as_deref(),
+        )?;
         codex_projects::CodexProjectCatalog::load(&scanner::default_codex_home())
             .enrich_analytics(&mut analytics);
         Ok(analytics)
@@ -267,12 +282,28 @@ async fn refresh_model_pricing(
 #[tauri::command]
 async fn fetch_monthly_usage(
     state: tauri::State<'_, AppState>,
+    account_id: Option<String>,
 ) -> Result<MonthlyUsageResponse, String> {
     let database_path = state.database_path.clone();
+    let pricing_cache_path = state.pricing_cache_path.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
+        let mut db = db::open_database(&database_path)?;
+        let pricing_source = load_usage_pricing(&mut db, &pricing_cache_path)?;
+        overview::get_monthly_usage_for_account(&db, None, account_id.as_deref(), &pricing_source)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn fetch_usage_accounts(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<UsageAccount>, String> {
+    let database_path = state.database_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
         let db = db::open_database(&database_path)?;
-        overview::get_monthly_usage(&db, None)
+        db::query_usage_accounts(&db)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -319,12 +350,13 @@ async fn fetch_codex_reset_history(days: u32) -> Result<Vec<CodexResetAnnounceme
 #[tauri::command]
 async fn fetch_session_details(
     state: tauri::State<'_, AppState>,
+    account_id: Option<String>,
 ) -> Result<Vec<SessionDetailRow>, String> {
     let database_path = state.database_path.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
         let db = db::open_database(&database_path)?;
-        let mut sessions = db::query_session_details(&db)?;
+        let mut sessions = db::query_session_details_for_account(&db, account_id.as_deref())?;
         let names = session_index::load_thread_names();
         let agents = session_replay::load_session_agents(&db)?
             .into_iter()
@@ -392,6 +424,7 @@ async fn export_usage(
     range: String,
     format: String,
     path: String,
+    account_id: Option<String>,
 ) -> Result<ExportResponse, String> {
     let database_path = state.database_path.clone();
     let pricing_cache_path = state.pricing_cache_path.clone();
@@ -399,7 +432,13 @@ async fn export_usage(
     tauri::async_runtime::spawn_blocking(move || {
         let mut db = db::open_database(&database_path)?;
         let pricing_source = load_usage_pricing(&mut db, &pricing_cache_path)?;
-        let mut overview = overview::get_overview(&db, &range, None, &pricing_source)?;
+        let mut overview = overview::get_overview_for_account(
+            &db,
+            &range,
+            None,
+            &pricing_source,
+            account_id.as_deref(),
+        )?;
         codex_projects::CodexProjectCatalog::load(&scanner::default_codex_home())
             .enrich_overview(&mut overview);
         exporter::export_overview(&overview, &format, PathBuf::from(path).as_path())
@@ -992,6 +1031,7 @@ pub fn run() {
             fetch_model_pricing_catalog,
             refresh_model_pricing,
             fetch_monthly_usage,
+            fetch_usage_accounts,
             fetch_codex_limits,
             activate_codex_window,
             fetch_codex_quota_forecast,

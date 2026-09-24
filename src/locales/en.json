@@ -26,6 +26,11 @@
     "command": "Command",
     "percent": "Percent"
   },
+  "accounts": {
+    "filter_label": "Filter usage by account",
+    "all": "All accounts",
+    "unknown": "Unknown account"
+  },
   "header": {
     "app_title": "Codex Usage Desktop",
     "upgrade": "Upgrade v{{version}}",

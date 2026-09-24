@@ -21,6 +21,7 @@ import { projectLabel, sessionProjectReferences } from "@/lib/project-reference"
 type ProjectSessionsModalProps = {
   project: Pick<OverviewResponse["projects"][number], "project" | "displayName" | "codexProjectId" | "codexProjectName" | "codexProjectRoot" | "totalTokens" | "costUSD">;
   range: RangeKey;
+  accountId?: string | null;
   onClose: () => void;
   onGoToSessions: (projectPath: string) => void;
 };
@@ -51,7 +52,7 @@ function TrendTooltip({ active, payload, label, t }: any) {
   </div>;
 }
 
-export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }: ProjectSessionsModalProps) {
+export function ProjectSessionsModal({ project, range, accountId = null, onClose, onGoToSessions }: ProjectSessionsModalProps) {
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<SessionDetailRow[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -71,25 +72,25 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }
     let active = true;
     setAnalyticsLoading(true);
     setAnalyticsError(null);
-    void fetchProjectAnalytics(project.project, range).then((data) => {
+    void fetchProjectAnalytics(project.project, range, accountId).then((data) => {
       if (active) setAnalytics(data);
     }).catch((error) => {
       if (active) setAnalyticsError(error instanceof Error ? error.message : String(error));
     }).finally(() => { if (active) setAnalyticsLoading(false); });
     return () => { active = false; };
-  }, [project.project, range]);
+  }, [project.project, range, accountId]);
 
   useEffect(() => {
     let active = true;
     setSessionsLoading(true);
     setSessionsError(null);
-    void fetchSessionDetails().then((data) => {
+    void fetchSessionDetails(accountId).then((data) => {
       if (active) setSessions(data.filter((session) => session.projects?.includes(project.project)));
     }).catch((error) => {
       if (active) setSessionsError(error instanceof Error ? error.message : t("project_modal.no_sessions"));
     }).finally(() => { if (active) setSessionsLoading(false); });
     return () => { active = false; };
-  }, [project.project, t]);
+  }, [project.project, accountId, t]);
 
   const filteredSessions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

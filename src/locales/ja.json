@@ -26,6 +26,11 @@
     "command": "コマンド",
     "percent": "割合"
   },
+  "accounts": {
+    "filter_label": "アカウント別に使用量を絞り込む",
+    "all": "すべてのアカウント",
+    "unknown": "不明なアカウント"
+  },
   "header": {
     "app_title": "Codex Usage Desktop",
     "upgrade": "v{{version}} に更新",

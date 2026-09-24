@@ -42,6 +42,8 @@ export default function App() {
     view,
     range,
     overview,
+    usageAccounts,
+    selectedAccountId,
     monthlyUsage,
     codexLimits,
     codexLimitsError,
@@ -78,6 +80,7 @@ export default function App() {
     isSessionsLoading,
     handleViewChange,
     handleRangeChange,
+    handleAccountChange,
     handlePricingRefreshed,
     handleRefresh,
     handleLimitsRefresh,
@@ -180,6 +183,9 @@ export default function App() {
           overview={overview}
           scanMessage={scanMessage}
           lastRescanDurationMs={lastRescanDurationMs}
+          usageAccounts={usageAccounts}
+          selectedAccountId={selectedAccountId}
+          onAccountChange={(accountId) => void handleAccountChange(accountId)}
         />
 
         <main className={view === "dashboard" ? "flex-1 py-3" : "flex-1 py-6"}>
@@ -455,6 +461,7 @@ export default function App() {
             <ProjectSessionsModal
               project={selectedProjectForModal}
               range={range}
+              accountId={selectedAccountId}
               onClose={() => setSelectedProjectForModal(null)}
               onGoToSessions={(projectPath) => {
                 setSelectedProjectForModal(null);

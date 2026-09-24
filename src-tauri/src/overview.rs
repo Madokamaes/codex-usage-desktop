@@ -1,6 +1,9 @@
 use crate::{
     date::{date_key_in_timezone, list_date_keys, resolve_app_timezone, shift_date_key},
-    db::{query_daily_quota_percents, query_daily_rows, query_latest_update_at},
+    db::{
+        query_daily_quota_percents_for_account, query_daily_rows_for_account,
+        query_latest_update_at_for_account,
+    },
     pricing::{calculate_cost_usd, PricingSource},
     types::{
         ModelUsage, MonthlyUsageResponse, MonthlyUsageRow, OverviewDailyRow, OverviewModelRow,
@@ -60,16 +63,28 @@ pub fn get_overview(
     timezone: Option<String>,
     pricing_source: &PricingSource,
 ) -> Result<OverviewResponse, String> {
+    get_overview_for_account(db, range, timezone, pricing_source, None)
+}
+
+pub fn get_overview_for_account(
+    db: &Connection,
+    range: &str,
+    timezone: Option<String>,
+    pricing_source: &PricingSource,
+    account_id: Option<&str>,
+) -> Result<OverviewResponse, String> {
     let timezone = timezone.unwrap_or_else(resolve_app_timezone);
 
     let (start_date, end_date, days) = resolve_range(range, &timezone)?;
 
-    let rows = query_daily_rows(db, &start_date, &end_date)?;
+    let mut rows = query_daily_rows_for_account(db, &start_date, &end_date, account_id)?;
+    recalculate_row_costs(&mut rows, pricing_source);
     let rows_by_date = rows
         .into_iter()
         .map(|row| (row.date.clone(), row))
         .collect::<BTreeMap<_, _>>();
-    let quota_by_date = query_daily_quota_percents(db, &start_date, &end_date)?;
+    let quota_by_date =
+        query_daily_quota_percents_for_account(db, &start_date, &end_date, account_id)?;
 
     let daily = list_date_keys(&start_date, &end_date)?
         .into_iter()
@@ -170,7 +185,7 @@ pub fn get_overview(
         timezone,
         start_date,
         end_date,
-        updated_at: query_latest_update_at(db)?,
+        updated_at: query_latest_update_at_for_account(db, account_id)?,
         daily,
         totals: OverviewTotals {
             input_tokens,
@@ -203,9 +218,20 @@ pub fn get_project_analytics(
     timezone: Option<String>,
     pricing_source: &PricingSource,
 ) -> Result<ProjectAnalyticsResponse, String> {
+    get_project_analytics_for_account(db, project, range, timezone, pricing_source, None)
+}
+
+pub fn get_project_analytics_for_account(
+    db: &Connection,
+    project: &str,
+    range: &str,
+    timezone: Option<String>,
+    pricing_source: &PricingSource,
+    account_id: Option<&str>,
+) -> Result<ProjectAnalyticsResponse, String> {
     let timezone = timezone.unwrap_or_else(resolve_app_timezone);
     let (start_date, end_date, _) = resolve_range(range, &timezone)?;
-    let rows = query_daily_rows(db, &start_date, &end_date)?;
+    let rows = query_daily_rows_for_account(db, &start_date, &end_date, account_id)?;
     let mut usage_by_date = BTreeMap::<String, ProjectUsage>::new();
     let mut summary = ProjectUsage::default();
     let mut found = false;
@@ -350,16 +376,49 @@ pub fn get_monthly_usage(
     get_monthly_usage_for_end_month(db, &timezone, &end_month, 12)
 }
 
+pub fn get_monthly_usage_for_account(
+    db: &Connection,
+    timezone: Option<String>,
+    account_id: Option<&str>,
+    pricing_source: &PricingSource,
+) -> Result<MonthlyUsageResponse, String> {
+    let timezone = timezone.unwrap_or_else(resolve_app_timezone);
+    let end_date = date_key_in_timezone(Utc::now(), &timezone);
+    let end_month = month_key_from_date_key(&end_date)?;
+    get_monthly_usage_for_end_month_and_account(
+        db,
+        &timezone,
+        &end_month,
+        12,
+        account_id,
+        Some(pricing_source),
+    )
+}
+
 fn get_monthly_usage_for_end_month(
     db: &Connection,
     timezone: &str,
     end_month: &str,
     month_count: usize,
 ) -> Result<MonthlyUsageResponse, String> {
+    get_monthly_usage_for_end_month_and_account(db, timezone, end_month, month_count, None, None)
+}
+
+fn get_monthly_usage_for_end_month_and_account(
+    db: &Connection,
+    timezone: &str,
+    end_month: &str,
+    month_count: usize,
+    account_id: Option<&str>,
+    pricing_source: Option<&PricingSource>,
+) -> Result<MonthlyUsageResponse, String> {
     let start_month = shift_month_key(end_month, -((month_count as i32) - 1))?;
     let start_date = format!("{start_month}-01");
     let end_date = month_end_date_key(end_month)?;
-    let rows = query_daily_rows(db, &start_date, &end_date)?;
+    let mut rows = query_daily_rows_for_account(db, &start_date, &end_date, account_id)?;
+    if let Some(pricing_source) = pricing_source {
+        recalculate_row_costs(&mut rows, pricing_source);
+    }
     let mut monthly_by_key = list_month_keys(&start_month, end_month)?
         .into_iter()
         .map(|month| {
@@ -392,9 +451,19 @@ fn get_monthly_usage_for_end_month(
         timezone: timezone.to_string(),
         start_month,
         end_month: end_month.to_string(),
-        updated_at: query_latest_update_at(db)?,
+        updated_at: query_latest_update_at_for_account(db, account_id)?,
         monthly: monthly_by_key.into_values().collect(),
     })
+}
+
+fn recalculate_row_costs(rows: &mut [crate::types::DailyUsageRow], pricing: &PricingSource) {
+    for row in rows {
+        row.cost_usd = row
+            .models
+            .iter()
+            .map(|(model, usage)| calculate_cost_usd(usage, pricing.pricing_for_model(model)))
+            .sum();
+    }
 }
 
 fn month_key_from_date_key(date_key: &str) -> Result<String, String> {

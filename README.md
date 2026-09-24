@@ -68,8 +68,9 @@ Break usage down by:
 - Day
 - Month
 - Session
+- Codex account that opened the session
 
-See **which project, model, or session consumed your tokens** and understand what drives your usage.
+Use the account filter to inspect one account's daily, monthly, model, project, and session usage and understand what drives its token consumption.
 
 ![Project usage details with token composition and estimated costs](docs/project-usage-detail.jpg)
 
@@ -208,6 +209,7 @@ Your Codex session content is sensitive. The app is designed to keep it on your 
 - Source files under `~/.codex` are read locally and are never uploaded, shared, or modified by the app.
 - No OpenAI or LiteLLM API key needs to be entered into or stored by the app.
 - Aggregated usage data is stored in a SQLite cache in the operating system's app data directory.
+- To distinguish accounts, the app reads only the account ID and email label from your local Codex login state and stores them locally; authentication tokens are never stored or displayed.
 - Live limits are requested directly from ChatGPT using your existing local Codex authentication; the app does not send session logs with those requests.
 - Network access is also used for public font files, model pricing, quota forecasts, and update checks. Pricing is cached locally, and these requests do not include your session logs or usage analytics.
 
@@ -218,6 +220,7 @@ Your Codex session content is sensitive. The app is designed to keep it on your 
 - Usage and cost values are calculated from local Codex logs; cost figures are estimates based on the available model pricing.
 - Unknown models default to zero estimated cost.
 - Session details depend on the information present in each local Codex log.
+- Codex session logs do not contain account identity, so attribution starts after this feature is enabled. Sessions that already existed at upgrade time are grouped under **Unknown account (pre-upgrade sessions)**. Resetting the usage cache preserves recorded account assignments.
 
 ## Advanced options
 

@@ -1,13 +1,23 @@
 import { createTauriCapabilities } from "@wdio/tauri-service";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const binaryName = process.platform === "win32" ? "codex-usage-desktop.exe" : "codex-usage-desktop";
 const appBinaryPath = `./src-tauri/target/debug/${binaryName}`;
-const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const tauriCliPath = fileURLToPath(new URL("./node_modules/@tauri-apps/cli/tauri.js", import.meta.url));
 
 export const config: WebdriverIO.Config = {
   onPrepare() {
-    const result = spawnSync(pnpmCommand, ["test:e2e:build"], {
+    const result = spawnSync(process.execPath, [
+      tauriCliPath,
+      "build",
+      "--debug",
+      "--no-bundle",
+      "--features",
+      "e2e",
+      "--config",
+      "src-tauri/tauri.e2e.conf.json",
+    ], {
       encoding: "utf8",
       maxBuffer: 50 * 1024 * 1024,
     });
