@@ -8,6 +8,8 @@ import App from "./App";
 import i18n from "./i18n";
 import tauriConfig from "../src-tauri/tauri.conf.json";
 
+vi.mock("@/lib/build-policy", () => ({ UPSTREAM_UPDATES_ENABLED: true }));
+
 const invokeMock = vi.hoisted(() => vi.fn());
 const forecastInvokeMock = vi.hoisted(() => vi.fn());
 const latestResetInvokeMock = vi.hoisted(() => vi.fn());

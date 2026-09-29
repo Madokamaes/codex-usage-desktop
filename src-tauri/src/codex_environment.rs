@@ -3,7 +3,7 @@ use std::path::Path;
 use std::{env, path::PathBuf, sync::OnceLock};
 #[cfg(target_os = "windows")]
 use std::{
-    process::{Command, Stdio},
+    process::Stdio,
     thread,
     time::{Duration, Instant},
 };
@@ -86,7 +86,7 @@ pub fn has_jsonl_sessions(codex_home: &Path) -> bool {
 
 #[cfg(target_os = "windows")]
 fn probe_default_wsl_environment() -> Option<CodexEnvironment> {
-    let mut child = Command::new("wsl.exe")
+    let mut child = crate::background_process::command("wsl.exe")
         .args([
             "sh",
             "-lc",

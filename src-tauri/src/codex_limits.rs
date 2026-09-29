@@ -176,7 +176,7 @@ struct CodexAuth {
     account_id: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct LimitsSnapshot {
     primary: Option<RpcRateLimitWindow>,
     secondary: Option<RpcRateLimitWindow>,
@@ -200,7 +200,18 @@ struct SubscriptionInfo {
     has_active_subscription: Option<bool>,
 }
 
+static LIMITS_QUERY: crate::query_cache::QueryCache<CodexLimitsResponse> = crate::query_cache::QueryCache::new();
+static CLI_QUERY: crate::query_cache::QueryCache<LimitsSnapshot> = crate::query_cache::QueryCache::new();
+
+fn account_stamp() -> Option<std::time::SystemTime> {
+    fs::metadata(selected_codex_environment().home.join("auth.json")).ok()?.modified().ok()
+}
+
 pub fn fetch_codex_limits() -> Result<CodexLimitsResponse, String> {
+    LIMITS_QUERY.run(account_stamp(), Duration::from_secs(15), Duration::from_secs(60), fetch_codex_limits_uncached)
+}
+
+fn fetch_codex_limits_uncached() -> Result<CodexLimitsResponse, String> {
     log::info!("Starting fetch_codex_limits...");
     let limits =
         fetch_codex_limits_with(fetch_oauth_limits, fetch_cli_limits, fetch_account_snapshot)?;
@@ -288,6 +299,8 @@ fn activate_codex_window_with(
 
     write_activation_marker(marker_path, &window_key, now)?;
     let activation_result = run_activation();
+    LIMITS_QUERY.clear();
+    CLI_QUERY.clear();
     let updated = fetch_limits().map_err(|error| {
         format!("The activation request finished, but the updated Codex limits could not be verified: {error}")
     })?;
@@ -694,6 +707,10 @@ impl ResetCreditsCache {
 }
 
 fn fetch_cli_limits() -> Result<LimitsSnapshot, String> {
+    CLI_QUERY.run(account_stamp(), Duration::from_secs(60), Duration::from_secs(60), fetch_cli_limits_uncached)
+}
+
+fn fetch_cli_limits_uncached() -> Result<LimitsSnapshot, String> {
     let codex = resolve_codex_command(selected_codex_environment()).ok_or_else(|| {
         "Codex CLI not found. Set CODEX_CLI_PATH or install the codex command.".to_string()
     })?;
@@ -1146,6 +1163,7 @@ impl CodexRpcProcess {
                 format!("Failed to start Codex CLI app-server at {display}: {error}")
             })?;
 
+        log::info!("Usage CLI started. pid={}, command={display}", child.id());
         let stdin = child
             .stdin
             .take()
@@ -1283,6 +1301,7 @@ impl CodexRpcProcess {
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = self.child.kill();
         }
+        let _ = self.child.wait();
     }
 
     fn timeout_error(&mut self, method: &str) -> String {
@@ -1330,7 +1349,7 @@ fn codex_app_server_args() -> [&'static str; 7] {
         "-s",
         "read-only",
         "-a",
-        "untrusted",
+        "never",
         "app-server",
     ]
 }
@@ -1431,7 +1450,7 @@ fn resolve_native_codex_binary() -> Option<PathBuf> {
 
 fn command_v_codex() -> Option<PathBuf> {
     let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-    let mut child = Command::new(shell)
+    let mut child = crate::background_process::command(shell)
         .args(["-l", "-i", "-c", "command -v codex"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -1466,7 +1485,7 @@ fn parse_command_v_output(output: &str) -> Option<PathBuf> {
 fn command_v_wsl_codex(distribution: &str) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
-        let mut child = Command::new("wsl.exe")
+        let mut child = crate::background_process::command("wsl.exe")
             .args([
                 "-d",
                 distribution,
@@ -1531,10 +1550,10 @@ fn codex_process_command(codex: &CodexCommand) -> Command {
     match codex {
         CodexCommand::Native(path) => {
             #[cfg(target_os = "windows")]
-            let mut command = Command::new(path);
+            let mut command = crate::background_process::command(path);
             #[cfg(not(target_os = "windows"))]
             let mut command = {
-                let mut command = Command::new("/usr/bin/env");
+                let mut command = crate::background_process::command("/usr/bin/env");
                 command.arg(path);
                 command
             };
@@ -1545,7 +1564,7 @@ fn codex_process_command(codex: &CodexCommand) -> Command {
         }
         CodexCommand::WindowsCmd(path) => {
             let args = codex_app_server_args().join(" ");
-            let mut command = Command::new("cmd.exe");
+            let mut command = crate::background_process::command("cmd.exe");
             command
                 .args(["/D", "/S", "/C"])
                 .arg(format!("\"{}\" {args}", path.display()))
@@ -1559,7 +1578,7 @@ fn codex_process_command(codex: &CodexCommand) -> Command {
                 .collect::<Vec<_>>()
                 .join(" ");
             let login_command = format!("exec \"$SHELL\" -lic {}", shell_quote(&inner_command));
-            let mut command = Command::new("wsl.exe");
+            let mut command = crate::background_process::command("wsl.exe");
             command
                 .args(["-d", distribution, "--", "sh", "-lc"])
                 .arg(login_command);
@@ -1573,10 +1592,10 @@ fn codex_activation_process_command(codex: &CodexCommand, working_directory: &Pa
     match codex {
         CodexCommand::Native(path) => {
             #[cfg(target_os = "windows")]
-            let mut command = Command::new(path);
+            let mut command = crate::background_process::command(path);
             #[cfg(not(target_os = "windows"))]
             let mut command = {
-                let mut command = Command::new("/usr/bin/env");
+                let mut command = crate::background_process::command("/usr/bin/env");
                 command.arg(path);
                 command
             };
@@ -1592,7 +1611,7 @@ fn codex_activation_process_command(codex: &CodexCommand, working_directory: &Pa
                 .map(|arg| format!("\"{}\"", arg.replace('"', "\"\"")))
                 .collect::<Vec<_>>()
                 .join(" ");
-            let mut command = Command::new("cmd.exe");
+            let mut command = crate::background_process::command("cmd.exe");
             command
                 .args(["/D", "/S", "/C"])
                 .arg(format!("\"{}\" {args}", path.display()))
@@ -1607,7 +1626,7 @@ fn codex_activation_process_command(codex: &CodexCommand, working_directory: &Pa
                 .collect::<Vec<_>>()
                 .join(" ");
             let login_command = format!("exec \"$SHELL\" -lic {}", shell_quote(&inner_command));
-            let mut command = Command::new("wsl.exe");
+            let mut command = crate::background_process::command("wsl.exe");
             command
                 .args(["-d", distribution, "--", "sh", "-lc"])
                 .arg(login_command)
@@ -1834,7 +1853,7 @@ mod tests {
                 "-s",
                 "read-only",
                 "-a",
-                "untrusted",
+                "never",
                 "app-server",
             ]
         );

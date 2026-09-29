@@ -1,6 +1,7 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import { listen } from "@tauri-apps/api/event";
+import { UPSTREAM_UPDATES_ENABLED } from "@/lib/build-policy";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -300,6 +301,7 @@ export function useUsageDashboard() {
 
   const hasBootstrappedRef = useRef(false);
   const lastLimitsFetchTimeRef = useRef<number>(0);
+  const limitsInFlightRef = useRef<Promise<void> | null>(null);
   const lastAutoScanTimeRef = useRef<number>(0);
   const scanInFlightRef = useRef<Promise<void> | null>(null);
   const updateCheckInFlightRef = useRef<Promise<void> | null>(null);
@@ -334,6 +336,7 @@ export function useUsageDashboard() {
   });
 
   const loadCodexLimits = useEffectEvent(async (options?: { force?: boolean }) => {
+    if (limitsInFlightRef.current) return limitsInFlightRef.current;
     const now = Date.now();
     const isManual = options?.force === true;
     if (!isManual && now - lastLimitsFetchTimeRef.current < 5000) {
@@ -342,13 +345,18 @@ export function useUsageDashboard() {
 
     lastLimitsFetchTimeRef.current = now;
 
-    try {
-      const data = await fetchCodexLimits();
-      setCodexLimits(data);
-      setCodexLimitsError(null);
-    } catch (limitsError) {
-      setCodexLimitsError(errorMessage(limitsError, "Failed to load Codex limits."));
-    }
+    const request = (async () => {
+      try {
+        const data = await fetchCodexLimits();
+        setCodexLimits(data);
+        setCodexLimitsError(null);
+      } catch (limitsError) {
+        setCodexLimitsError(errorMessage(limitsError, "Failed to load Codex limits."));
+      }
+    })();
+    limitsInFlightRef.current = request;
+    try { await request; }
+    finally { if (limitsInFlightRef.current === request) limitsInFlightRef.current = null; }
   });
 
   const loadCodexQuotaForecast = useEffectEvent(async () => {
@@ -450,6 +458,11 @@ export function useUsageDashboard() {
   });
 
   const performBackgroundUpdateCheck = useEffectEvent(async () => {
+    if (!UPSTREAM_UPDATES_ENABLED) {
+      setUpdateInfo(null);
+      for (const key of ["last_update_check_result", "last_update_check_time", "last_update_check_failed_time", "dismissed_update_tag"]) localStorage.removeItem(key);
+      return;
+    }
     let cachedInfo: UpdateCheckResponse | null = null;
     try {
       const now = Date.now();
@@ -636,7 +649,7 @@ export function useUsageDashboard() {
   }, [bootstrap]);
 
   useEffect(() => {
-    if (!bootstrapped) return;
+    if (!bootstrapped || !UPSTREAM_UPDATES_ENABLED) return;
 
     let cancelled = false;
     let timer: number | null = null;
@@ -726,13 +739,15 @@ export function useUsageDashboard() {
     if (!bootstrapped) return;
 
     let unlistenFn: (() => void) | null = null;
+    let disposed = false;
 
     const setupListener = async () => {
       try {
         const unsubscribe = await listen<UsageRefreshResponse>("background-refresh-completed", async (event) => {
           await handleBackgroundRefreshCompleted(event.payload);
         });
-        unlistenFn = unsubscribe;
+        if (disposed) unsubscribe();
+        else unlistenFn = unsubscribe;
       } catch (err) {
         console.error("Failed to setup background refresh listener:", err);
       }
@@ -741,6 +756,7 @@ export function useUsageDashboard() {
     void setupListener();
 
     return () => {
+      disposed = true;
       if (unlistenFn) {
         unlistenFn();
       }
@@ -1063,6 +1079,7 @@ export function useUsageDashboard() {
   };
 
   const handleManualUpdateCheck = async () => {
+    if (!UPSTREAM_UPDATES_ENABLED) return;
     setIsUpdateChecking(true);
     setUpdateCheckError(null);
     try {
@@ -1086,6 +1103,7 @@ export function useUsageDashboard() {
   };
 
   const handleUpgrade = async () => {
+    if (!UPSTREAM_UPDATES_ENABLED) return;
     if (updateInstallStatus === "installed") {
       try {
         localStorage.removeItem("last_update_check_result");

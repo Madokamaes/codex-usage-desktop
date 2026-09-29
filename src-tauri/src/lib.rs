@@ -1,4 +1,6 @@
 mod accounts;
+mod background_process;
+mod query_cache;
 mod codex_environment;
 mod codex_limits;
 mod codex_projects;
@@ -31,6 +33,8 @@ use types::{
     SessionDetailRow, SessionReplayDetail, UpdateCheckResponse, UpdateDownloadProgress,
     UpdateInstallResponse, UsageAccount, UsageRefreshResponse,
 };
+
+const UPSTREAM_UPDATES_ENABLED: bool = false;
 
 const DEFAULT_BACKGROUND_RESCAN_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const ALLOWED_BACKGROUND_RESCAN_MINUTES: [u64; 8] = [1, 2, 3, 4, 5, 15, 30, 60];
@@ -484,6 +488,9 @@ async fn check_for_updates(
     app: tauri::AppHandle,
     etag: Option<String>,
 ) -> Result<UpdateCheckResponse, String> {
+    if !UPSTREAM_UPDATES_ENABLED {
+        return Err("个人修改版已关闭官方更新检查。".into());
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let current_version = app.package_info().version.to_string();
         log::info!(
@@ -668,6 +675,9 @@ async fn check_for_updates(
 async fn download_and_install_update(
     app: tauri::AppHandle,
 ) -> Result<UpdateInstallResponse, String> {
+    if !UPSTREAM_UPDATES_ENABLED {
+        return Err("个人修改版禁止安装官方更新，以保留个人修改。".into());
+    }
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
         .check()
@@ -883,6 +893,8 @@ fn setup_app_menu(app: &mut tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(all(windows, not(feature = "e2e")))]
+    if !background_process::acquire_instance() { return; }
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -893,6 +905,8 @@ pub fn run() {
                     }),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
                 ])
+                .max_file_size(8 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
                 .level(log::LevelFilter::Info)
                 .build(),
         )
