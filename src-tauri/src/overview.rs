@@ -3,12 +3,13 @@ use crate::{
     db::{
         query_daily_quota_percents_for_account, query_daily_rows_for_account,
         query_latest_update_at_for_account,
+        query_model_quota_samples, ModelQuotaAggregate,
     },
     pricing::{calculate_cost_usd, PricingSource},
     types::{
-        ModelUsage, MonthlyUsageResponse, MonthlyUsageRow, OverviewDailyRow, OverviewModelRow,
-        OverviewProjectRow, OverviewResponse, OverviewTotals, ProjectAnalyticsModelRow,
-        ProjectAnalyticsResponse, ProjectUsage,
+        ModelQuotaEstimate, ModelUsage, MonthlyUsageResponse, MonthlyUsageRow, OverviewDailyRow,
+        OverviewModelRow, OverviewProjectRow, OverviewResponse, OverviewTotals,
+        ProjectAnalyticsModelRow, ProjectAnalyticsResponse, ProjectUsage,
     },
 };
 use chrono::{Datelike, NaiveDate, Utc};
@@ -144,6 +145,15 @@ pub fn get_overview_for_account(
         .into_iter()
         .map(|(model, usage)| overview_model_row(model, usage, pricing_source))
         .collect::<Vec<_>>();
+    let quota_samples = query_model_quota_samples(db, &start_date, &end_date, account_id)?;
+    for row in &mut models {
+        row.five_hour_quota = quota_samples
+            .get(&(row.model.clone(), 300))
+            .and_then(|samples| estimate_model_quota(samples, row.total_tokens));
+        row.weekly_quota = quota_samples
+            .get(&(row.model.clone(), 10080))
+            .and_then(|samples| estimate_model_quota(samples, row.total_tokens));
+    }
     models.sort_by(|a, b| {
         b.total_tokens
             .cmp(&a.total_tokens)
@@ -178,6 +188,24 @@ pub fn get_overview_for_account(
             .cmp(&a.total_tokens)
             .then_with(|| a.project.cmp(&b.project))
     });
+    let project_daily = projects
+        .iter()
+        .map(|project| {
+            let days = daily
+                .iter()
+                .map(|day| {
+                    project_daily_row(
+                        day.date.clone(),
+                        rows_by_date
+                            .get(&day.date)
+                            .and_then(|row| row.projects.get(&project.project)),
+                        pricing_source,
+                    )
+                })
+                .collect();
+            (project.project.clone(), days)
+        })
+        .collect();
 
     Ok(OverviewResponse {
         range: range.to_string(),
@@ -208,6 +236,7 @@ pub fn get_overview_for_account(
         },
         models,
         projects,
+        project_daily,
     })
 }
 
@@ -262,30 +291,7 @@ pub fn get_project_analytics_for_account(
 
     let daily = list_date_keys(&start_date, &end_date)?
         .into_iter()
-        .map(|date| {
-            let usage = usage_by_date.get(&date);
-            let cost_usd = usage
-                .map(|usage| {
-                    usage
-                        .models
-                        .iter()
-                        .map(|(model, model_usage)| {
-                            calculate_cost_usd(model_usage, pricing_source.pricing_for_model(model))
-                        })
-                        .sum()
-                })
-                .unwrap_or(0.0);
-            OverviewDailyRow {
-                date,
-                input_tokens: usage.map(|usage| usage.input_tokens).unwrap_or(0),
-                cached_input_tokens: usage.map(|usage| usage.cached_input_tokens).unwrap_or(0),
-                output_tokens: usage.map(|usage| usage.output_tokens).unwrap_or(0),
-                total_tokens: usage.map(|usage| usage.total_tokens).unwrap_or(0),
-                cost_usd,
-                five_hour_percent: None,
-                weekly_percent: None,
-            }
-        })
+        .map(|date| project_daily_row(date.clone(), usage_by_date.get(&date), pricing_source))
         .collect::<Vec<_>>();
     let cost_usd = daily.iter().map(|day| day.cost_usd).sum();
     let mut models = summary
@@ -335,6 +341,33 @@ pub fn get_project_analytics_for_account(
     })
 }
 
+fn project_daily_row(
+    date: String,
+    usage: Option<&ProjectUsage>,
+    pricing_source: &PricingSource,
+) -> OverviewDailyRow {
+    OverviewDailyRow {
+        date,
+        input_tokens: usage.map(|usage| usage.input_tokens).unwrap_or(0),
+        cached_input_tokens: usage.map(|usage| usage.cached_input_tokens).unwrap_or(0),
+        output_tokens: usage.map(|usage| usage.output_tokens).unwrap_or(0),
+        total_tokens: usage.map(|usage| usage.total_tokens).unwrap_or(0),
+        cost_usd: usage
+            .map(|usage| {
+                usage
+                    .models
+                    .iter()
+                    .map(|(model, model_usage)| {
+                        calculate_cost_usd(model_usage, pricing_source.pricing_for_model(model))
+                    })
+                    .sum()
+            })
+            .unwrap_or(0.0),
+        five_hour_percent: None,
+        weekly_percent: None,
+    }
+}
+
 fn overview_model_row(
     model: String,
     usage: ModelUsage,
@@ -363,6 +396,60 @@ fn overview_model_row(
         } else {
             None
         },
+        five_hour_quota: None,
+        weekly_quota: None,
+    }
+}
+
+fn estimate_model_quota(
+    samples: &ModelQuotaAggregate,
+    total_tokens: i64,
+) -> Option<ModelQuotaEstimate> {
+    if samples.tokens <= 0 || total_tokens <= 0 {
+        return None;
+    }
+    let rate = 1_000_000.0 / samples.tokens as f64;
+    let lower = (samples.observed_percent - samples.samples as f64).max(0.0);
+    let upper = samples.observed_percent + samples.samples as f64;
+    let scale = total_tokens as f64 / samples.tokens as f64;
+    Some(ModelQuotaEstimate {
+        percent: samples.observed_percent * scale,
+        lower_percent: lower * scale,
+        upper_percent: upper * scale,
+        percent_per_million_tokens: samples.observed_percent * rate,
+        lower_percent_per_million_tokens: lower * rate,
+        upper_percent_per_million_tokens: upper * rate,
+        sampled_tokens: samples.tokens,
+        samples: samples.samples,
+    })
+}
+
+#[cfg(test)]
+mod quota_estimate_tests {
+    use super::*;
+
+    #[test]
+    fn includes_integer_snapshot_uncertainty_and_zero_deltas() {
+        let samples = ModelQuotaAggregate {
+            tokens: 1_000_000,
+            observed_percent: 2.0,
+            samples: 2,
+        };
+        let estimate = estimate_model_quota(&samples, 2_000_000).unwrap();
+        assert_eq!(estimate.percent, 4.0);
+        assert_eq!(estimate.lower_percent, 0.0);
+        assert_eq!(estimate.upper_percent, 8.0);
+        assert_eq!(estimate.percent_per_million_tokens, 2.0);
+        assert_eq!(estimate.upper_percent_per_million_tokens, 4.0);
+
+        let below_resolution = ModelQuotaAggregate {
+            tokens: 100_000,
+            observed_percent: 0.0,
+            samples: 1,
+        };
+        let estimate = estimate_model_quota(&below_resolution, 100_000).unwrap();
+        assert_eq!(estimate.lower_percent, 0.0);
+        assert_eq!(estimate.upper_percent, 1.0);
     }
 }
 
@@ -660,6 +747,22 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         assert_eq!(project_dates["/repo/app"], "2026-07-03");
         assert_eq!(project_dates["/repo/other"], "2026-07-01");
+        let app_daily = &overview.project_daily["/repo/app"];
+        assert_eq!(app_daily.len(), 3);
+        assert_eq!(app_daily[0].total_tokens, 1_100_000);
+        assert_eq!(app_daily[1].date, "2026-07-02");
+        assert_eq!(app_daily[1].total_tokens, 0);
+        assert_eq!(app_daily[2].total_tokens, 550_000);
+        assert_eq!(overview.project_daily["/repo/other"][2].total_tokens, 0);
+        let app_total = overview
+            .projects
+            .iter()
+            .find(|project| project.project == "/repo/app")
+            .unwrap();
+        assert!(
+            (app_daily.iter().map(|day| day.cost_usd).sum::<f64>() - app_total.cost_usd).abs()
+                < 1e-12
+        );
 
         let response = get_project_analytics(
             &db,

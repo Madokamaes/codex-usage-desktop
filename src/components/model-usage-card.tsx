@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { OverviewResponse } from "@/lib/api";
+import type { ModelQuotaEstimate, OverviewResponse } from "@/lib/api";
 import {
   buildDonutData,
   modelPageColors,
@@ -47,6 +48,32 @@ function Price({ value, tone, unavailable }: { value: number | null; tone: Price
   );
 }
 
+function QuotaEstimate({ value }: { value: ModelQuotaEstimate | null | undefined }) {
+  const { t } = useTranslation();
+  if (!value) return <span className="text-muted-foreground">{t("models.quota.no_sample")}</span>;
+  const percent = (amount: number) => formatPercent(amount / 100);
+  return <div className="space-y-1 tabular-nums">
+    <p className="font-semibold">{t("models.quota.total", { value: percent(value.percent) })}</p>
+    <p className="text-xs text-muted-foreground">{t("models.quota.range", { lower: percent(value.lowerPercent), upper: percent(value.upperPercent) })}</p>
+    <p>{t("models.quota.per_million", { value: percent(value.percentPerMillionTokens) })}</p>
+    <p className="text-xs text-muted-foreground">{t("models.quota.range", { lower: percent(value.lowerPercentPerMillionTokens), upper: percent(value.upperPercentPerMillionTokens) })}</p>
+    <p className="text-xs text-muted-foreground">{t("models.quota.sample", { tokens: formatNumber(value.sampledTokens), count: value.samples })}</p>
+  </div>;
+}
+
+function QuotaBar({ value, maxPercent, color, label, metric }: { value: ModelQuotaEstimate | null | undefined; maxPercent: number; color: string; label: string; metric: "percent" | "percentPerMillionTokens" }) {
+  const { t } = useTranslation();
+  const metricLabel = t(metric === "percent" ? "models.quota.total_label" : "models.quota.per_million_label");
+  const percent = value?.[metric];
+  return <div className="grid grid-cols-[5.5rem_minmax(0,1fr)_5rem] items-center gap-2 text-xs">
+    <span className="text-muted-foreground">{metricLabel}</span>
+    <div role="img" data-quota-metric={metric} aria-label={`${label} · ${metricLabel}: ${percent == null ? t("models.quota.no_sample") : formatPercent(percent / 100)}`} className="h-3 overflow-hidden rounded-full bg-muted">
+      {percent != null ? <div className="h-full rounded-full" style={{ width: `${Math.max(0, percent) / maxPercent * 100}%`, backgroundColor: color, opacity: metric === "percent" ? 1 : 0.55 }} /> : null}
+    </div>
+    <span className="text-right font-medium tabular-nums">{percent == null ? "—" : formatPercent(percent / 100)}</span>
+  </div>;
+}
+
 export function ModelUsageCard({ models }: ModelUsageCardProps) {
   const { t } = useTranslation();
   const [sort, setSort] = useState<ModelSort>("tokens");
@@ -71,6 +98,8 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
     ? totals.costUSD / totals.totalTokens * 1_000_000
     : null;
   const unavailable = t("models.pricing_unavailable");
+  const quotaMaxPercent = Math.max(100, Math.ceil(Math.max(...models.flatMap((model) => [model.fiveHourQuota?.percent ?? 0, model.weeklyQuota?.percent ?? 0])) / 25) * 25);
+  const quotaPerMillionMaxPercent = Math.max(100, Math.ceil(Math.max(...models.flatMap((model) => [model.fiveHourQuota?.percentPerMillionTokens ?? 0, model.weeklyQuota?.percentPerMillionTokens ?? 0])) / 25) * 25);
 
   if (models.length === 0) {
     return <Card><CardContent className="py-14 text-center text-sm text-muted-foreground">{t("models.no_data")}</CardContent></Card>;
@@ -91,6 +120,39 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
           <Card key={label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-bold tabular-nums text-foreground">{value}</p></CardContent></Card>
         ))}
       </div>
+
+      <Card data-testid="model-quota-estimates">
+        <CardHeader><CardTitle>{t("models.quota.title")}</CardTitle><CardDescription>{t("models.quota.subtitle")}</CardDescription></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-sky-500" />{t("models.quota.five_hour")}</span>
+            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-violet-500" />{t("models.quota.weekly")}</span>
+            <span className="sm:ml-auto">{t("models.quota.scale", { max: formatPercent(quotaMaxPercent / 100) })}</span>
+            <span>{t("models.quota.per_million_scale", { max: formatPercent(quotaPerMillionMaxPercent / 100) })}</span>
+          </div>
+          <div className="divide-y divide-border/70">
+            {sortedModels.map((model) => <details key={model.model} data-quota-model={model.model} className="group">
+              <summary className="grid cursor-pointer list-none gap-3 py-4 focus-visible:rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[minmax(10rem,15rem)_minmax(0,1fr)] sm:items-center [&::-webkit-details-marker]:hidden">
+                <span className="flex min-w-0 items-center gap-2 font-medium"><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /><span className="truncate" title={model.model}>{model.model}</span></span>
+                <div className="grid gap-3">
+                  <div className="grid gap-1">
+                    <QuotaBar value={model.fiveHourQuota} maxPercent={quotaMaxPercent} color="#0ea5e9" label={t("models.quota.five_hour")} metric="percent" />
+                    <QuotaBar value={model.fiveHourQuota} maxPercent={quotaPerMillionMaxPercent} color="#0ea5e9" label={t("models.quota.five_hour")} metric="percentPerMillionTokens" />
+                  </div>
+                  <div className="grid gap-1">
+                    <QuotaBar value={model.weeklyQuota} maxPercent={quotaMaxPercent} color="#8b5cf6" label={t("models.quota.weekly")} metric="percent" />
+                    <QuotaBar value={model.weeklyQuota} maxPercent={quotaPerMillionMaxPercent} color="#8b5cf6" label={t("models.quota.weekly")} metric="percentPerMillionTokens" />
+                  </div>
+                </div>
+              </summary>
+              <div data-quota-details className="grid gap-4 rounded-md bg-muted/40 p-4 text-sm sm:ml-[15rem] sm:grid-cols-2">
+                <div><h4 className="mb-2 font-medium">{t("models.quota.five_hour")}</h4><QuotaEstimate value={model.fiveHourQuota} /></div>
+                <div><h4 className="mb-2 font-medium">{t("models.quota.weekly")}</h4><QuotaEstimate value={model.weeklyQuota} /></div>
+              </div>
+            </details>)}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

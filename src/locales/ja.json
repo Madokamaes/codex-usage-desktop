@@ -322,6 +322,22 @@
     "no_data": "この期間にモデルの利用はありません。",
     "other": "その他",
     "pricing_unavailable": "価格情報なし",
+    "quota": {
+      "title": "モデル別の制限消費量の推定",
+      "subtitle": "単一モデルの過去セッションの記録から、選択期間の合計と100万トークンあたりの消費量を推定します。整数の割合表示による誤差は各記録群につき±1ポイントとして範囲に含めます。同時実行中のセッションは帰属に影響する場合があります。",
+      "model": "モデル",
+      "five_hour": "5時間制限",
+      "weekly": "週間制限",
+      "scale": "合計目盛り：0–{{max}}",
+      "per_million_scale": "100万トークンあたりの目盛り：0–{{max}}",
+      "total_label": "合計",
+      "per_million_label": "100万トークンあたり",
+      "total": "合計 約 {{value}}",
+      "per_million": "100万トークンあたり 約 {{value}}",
+      "range": "表示精度による範囲 {{lower}}–{{upper}}",
+      "sample": "標本 {{tokens}} トークン · {{count}} 組の記録",
+      "no_sample": "帰属できる記録なし"
+    },
     "of_usage": "（使用量に占める割合）",
     "of_cost": "（コストに占める割合）",
     "summary": {
@@ -385,11 +401,14 @@
     "subtitle": "プロジェクトディレクトリ別にトークンとコストの合計を分析します。",
     "card_title": "プロジェクト使用量",
     "card_subtitle": "選択した期間のプロジェクトディレクトリ別のトークン数とコストの合計。",
+    "daily_trend": "日別推移：{{project}}",
     "cols": {
       "project": "プロジェクトディレクトリ",
       "tokens": "総トークン数",
       "cost": "料金",
       "composition": "トークン構成",
+      "trend": "日別推移",
+      "tokens_cost": "トークンと料金",
       "percent": "全体に占める割合",
       "actions": "操作"
     },
@@ -416,6 +435,7 @@
     },
     "values": {
       "input": "入力",
+      "uncached": "非キャッシュ",
       "cached": "キャッシュされた",
       "output": "出力"
     },
@@ -709,8 +729,6 @@
     "language_title": "言語設定",
     "language_desc": "アプリケーションの表示言語を変更します。",
     "language_label": "アプリの言語",
-    "lang_en": "英語",
-    "lang_zh": "简体中文",
     "menu_bar_title": "メニューバー/システムトレイ設定",
     "menu_bar_desc": "macOSのメニューバー、Windowsのトレイツールチップ、トレイメニューに表示する項目を設定します。",
     "menu_bar_show_title": "メニューバー/トレイツールチップに表示",
@@ -735,8 +753,7 @@
     "menu_bar_workspace": "ワークスペース",
     "menu_bar_show_main": "メインウィンドウを表示",
     "menu_bar_quit": "終了",
-    "reset_confirm": "キャッシュされた使用状況と価格データをリセットして、ローカルの Codex ログから再構築しますか?ソースログは削除されません。",
-    "lang_ja": "日本語"
+    "reset_confirm": "キャッシュされた使用状況と価格データをリセットして、ローカルの Codex ログから再構築しますか?ソースログは削除されません。"
   },
   "logs": {
     "title": "リアルタイムシステムログ",

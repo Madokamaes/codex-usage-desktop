@@ -6,6 +6,12 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ProjectUsageCard } from "./project-usage-card";
 import type { OverviewResponse } from "@/lib/api";
 
+vi.mock("./usage-trends-card", () => ({
+  UsageTrendsCard: ({ daily, title, compact }: { daily: OverviewResponse["daily"]; title: string; compact?: boolean }) => (
+    <div aria-label={title} data-compact={compact}>{daily.map((day) => `${day.date}: ${day.totalTokens}`).join(", ")}</div>
+  ),
+}));
+
 function project(displayName: string, totalTokens: number, costUSD: number): OverviewResponse["projects"][number] {
   const outputTokens = Math.min(totalTokens, 20);
   return { project: `/repo/${displayName}`, displayName, inputTokens: totalTokens - outputTokens, cachedInputTokens: Math.min(totalTokens - outputTokens, 20), outputTokens, totalTokens, costUSD };
@@ -41,7 +47,21 @@ describe("ProjectUsageCard", () => {
     expect(row("Medium").querySelector("[data-cost-tone='medium']")).toBeInTheDocument();
     expect(row("High").querySelector("[data-cost-tone='high']")).toBeInTheDocument();
     expect(within(row("Zero")).queryByText("Highest")).not.toBeInTheDocument();
-    expect(within(row("High")).getAllByText("Highest").length).toBeGreaterThan(0);
+    expect(within(row("High")).getAllByText("Highest")).toHaveLength(1);
+    expect(within(row("High")).queryByText("100% of peak")).not.toBeInTheDocument();
+  });
+
+  it("aligns compact token parts while retaining exact values", () => {
+    const usage = { ...project("High", 2_000_000, 9), inputTokens: 1_900_000, cachedInputTokens: 1_600_000, outputTokens: 100_000 };
+    render(<ProjectUsageCard projects={[usage]} />);
+
+    const cell = screen.getByText("High").closest("tr")!.querySelectorAll("td")[2];
+    expect(within(cell).getByText("2M")).toHaveAttribute("title", "2,000,000");
+    expect(within(cell).getByText("300K")).toHaveAttribute("title", "300,000");
+    expect(within(cell).getByText("1.6M")).toHaveAttribute("title", "1,600,000");
+    expect(within(cell).getByText("100K")).toHaveAttribute("title", "100,000");
+    expect(within(cell).getByText("84.2%")).toBeInTheDocument();
+    expect(cell.querySelector("dl")?.children).toHaveLength(3);
   });
 
   it("sorts by recent activity", async () => {
@@ -70,5 +90,36 @@ describe("ProjectUsageCard", () => {
     expect(screen.getByText("Codex project")).toBeInTheDocument();
     expect(screen.getByText("/repo/codex-usage-desktop")).toBeInTheDocument();
     expect(screen.queryByText("codex-usage-desktop", { selector: "p" })).not.toBeInTheDocument();
+  });
+
+  it("shows each project's daily values and updates them with the selected range", () => {
+    const alpha = project("Alpha", 100, 3);
+    const bravo = project("Bravo", 200, 9);
+    const daily = (date: string, totalTokens: number): OverviewResponse["daily"][number] => ({
+      date, inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, totalTokens, costUSD: 0,
+    });
+    const { rerender } = render(<ProjectUsageCard projects={[alpha, bravo]} projectDaily={{
+      [alpha.project]: [daily("2026-09-27", 10), daily("2026-09-28", 90)],
+      [bravo.project]: [daily("2026-09-27", 200), daily("2026-09-28", 0)],
+    }} />);
+
+    expect(screen.getByLabelText("Daily trend: Alpha")).toHaveTextContent("2026-09-27: 10, 2026-09-28: 90");
+    expect(screen.getByLabelText("Daily trend: Bravo")).toHaveTextContent("2026-09-27: 200, 2026-09-28: 0");
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["Project Directory", "Daily trend", "Tokens and cost"]);
+    const alphaCells = screen.getByText("Alpha").closest("tr")!.querySelectorAll("td");
+    expect(alphaCells).toHaveLength(3);
+    expect(alphaCells[1]).toContainElement(screen.getByLabelText("Daily trend: Alpha"));
+    expect(screen.getByLabelText("Daily trend: Alpha")).toHaveAttribute("data-compact", "true");
+    expect(alphaCells[2]).toHaveTextContent("100");
+    expect(alphaCells[2]).toHaveTextContent("$3.00");
+    expect(screen.getAllByRole("row")).toHaveLength(3);
+
+    rerender(<ProjectUsageCard projects={[alpha, bravo]} projectDaily={{
+      [alpha.project]: [daily("2026-09-28", 90)],
+      [bravo.project]: [daily("2026-09-28", 0)],
+    }} />);
+
+    expect(screen.getByLabelText("Daily trend: Alpha")).toHaveTextContent("2026-09-28: 90");
+    expect(screen.getByLabelText("Daily trend: Alpha")).not.toHaveTextContent("2026-09-27");
   });
 });

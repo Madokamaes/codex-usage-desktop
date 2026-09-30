@@ -27,20 +27,25 @@ describe("Fork automatic updates", () => {
     // Intercept update actions to avoid replacing/closing the native test application.
     // The real command path is exercised above; rendering and all other IPC stay native.
     await browser.execute(() => {
-      const api = (window as any).__TAURI_INTERNALS__;
-      const invoke = api.invoke.bind(api);
+      const fetch = window.fetch.bind(window);
       (window as any).__updateCalls = [];
-      api.invoke = (command: string, ...args: any[]) => {
-        if (command === "check_for_updates") return Promise.resolve({
-          hasUpdate: true, currentVersion: "3.6.2", latestVersion: "9.0.0", latestTag: "app-v9.0.0",
+      localStorage.removeItem("last_update_install_failed_time");
+      // Tauri's invoke property is immutable. Stub the IPC HTTP response instead.
+      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const command = String(input).split("/").pop();
+        let result: unknown;
+        if (command === "check_for_updates") result = {
+          hasUpdate: true, currentVersion: "3.8.4", latestVersion: "9.0.0", latestTag: "app-v9.0.0",
           releaseName: "Fork update", releaseNotes: "分账号会话额度统计",
           releaseUrl: "https://github.com/Madokamaes/codex-usage-desktop/releases/tag/app-v9.0.0",
-        });
-        if (command === "download_and_install_update" || command === "restart_app") {
+        };
+        else if (command === "download_and_install_update" || command === "restart_app") {
           (window as any).__updateCalls.push(command);
-          return Promise.resolve(command === "restart_app" ? null : { version: "9.0.0" });
-        }
-        return invoke(command, ...args);
+          result = command === "restart_app" ? null : { version: "9.0.0" };
+        } else return fetch(input, init);
+        return Promise.resolve(new Response(JSON.stringify(result), {
+          headers: { "Content-Type": "application/json", "Tauri-Response": "ok" },
+        }));
       };
     });
     await $('[data-testid="check-upstream-updates"]').click();

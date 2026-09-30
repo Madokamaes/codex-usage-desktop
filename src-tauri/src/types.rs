@@ -92,6 +92,21 @@ pub struct OverviewModelRow {
     pub cached_input_cost_per_million_tokens: Option<f64>,
     pub output_cost_per_million_tokens: Option<f64>,
     pub effective_cost_per_million_tokens: Option<f64>,
+    pub five_hour_quota: Option<ModelQuotaEstimate>,
+    pub weekly_quota: Option<ModelQuotaEstimate>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelQuotaEstimate {
+    pub percent: f64,
+    pub lower_percent: f64,
+    pub upper_percent: f64,
+    pub percent_per_million_tokens: f64,
+    pub lower_percent_per_million_tokens: f64,
+    pub upper_percent_per_million_tokens: f64,
+    pub sampled_tokens: i64,
+    pub samples: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -193,6 +208,7 @@ pub struct OverviewResponse {
     pub totals: OverviewTotals,
     pub models: Vec<OverviewModelRow>,
     pub projects: Vec<OverviewProjectRow>,
+    pub project_daily: BTreeMap<String, Vec<OverviewDailyRow>>,
 }
 
 #[derive(Debug, Clone, Serialize)]

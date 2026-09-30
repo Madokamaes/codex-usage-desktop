@@ -734,8 +734,37 @@ async fn download_and_install_update(
 
 #[tauri::command]
 async fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let executable = tauri::process::current_binary(&app.env())
+            .map_err(|e| format!("Failed to find app executable: {e}"))?;
+        if let Some(bundle) = macos_app_bundle(&executable) {
+            std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg("while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n -a \"$2\"")
+                .arg("relaunch")
+                .arg(std::process::id().to_string())
+                .arg(bundle)
+                .spawn()
+                .map_err(|e| format!("Failed to schedule app relaunch: {e}"))?;
+            app.exit(0);
+            return Ok(());
+        }
+    }
+
     app.request_restart();
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_app_bundle(executable: &Path) -> Option<&Path> {
+    let macos_dir = executable.parent()?;
+    let contents_dir = macos_dir.parent()?;
+    let bundle = contents_dir.parent()?;
+    (macos_dir.file_name()? == "MacOS"
+        && contents_dir.file_name()? == "Contents"
+        && bundle.extension()? == "app")
+        .then_some(bundle)
 }
 
 #[tauri::command]
@@ -744,7 +773,7 @@ async fn open_url(url: String) -> Result<(), String> {
     {
         std::process::Command::new("open")
             .arg(&url)
-            .spawn()
+            .status()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "windows")]
@@ -769,7 +798,7 @@ async fn reveal_in_file_manager(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     std::process::Command::new("open")
         .args(["-R", &path])
-        .spawn()
+        .status()
         .map_err(|error| error.to_string())?;
 
     #[cfg(target_os = "windows")]
@@ -1158,6 +1187,21 @@ mod tests {
         assert!(!is_newer("0.4.0", "0.4.0"));
         assert!(!is_newer("0.4.0", "0.3.9"));
         assert!(!is_newer("0.4.0", "invalid"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn restart_uses_the_installed_app_bundle() {
+        let executable =
+            Path::new("/Applications/Codex Usage Desktop.app/Contents/MacOS/codex-usage-desktop");
+        assert_eq!(
+            macos_app_bundle(executable),
+            Some(Path::new("/Applications/Codex Usage Desktop.app"))
+        );
+        assert_eq!(
+            macos_app_bundle(Path::new("/tmp/codex-usage-desktop")),
+            None
+        );
     }
 
     #[test]

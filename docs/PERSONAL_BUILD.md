@@ -7,7 +7,7 @@ Account filters apply to daily, monthly, model, project, and session usage. Attr
 records the account that opened newly observed sessions; earlier sessions without recorded
 identity remain unknown. Live limit cards still describe the currently authenticated account.
 
-## Automatic updates (3.6.2+)
+## Automatic updates (3.8.4+)
 
 This fork checks its own public GitHub Releases manifest in the background, then downloads,
 verifies the updater signature, installs, and restarts automatically. Windows uses a quiet

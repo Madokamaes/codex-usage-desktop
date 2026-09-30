@@ -11,7 +11,7 @@ use std::{
     path::Path,
 };
 
-const QUOTA_PARSER_VERSION: i64 = 2;
+const QUOTA_PARSER_VERSION: i64 = 3;
 
 pub fn open_database(database_path: &Path) -> Result<Connection, String> {
     let db = Connection::open(database_path).map_err(|error| error.to_string())?;
@@ -121,6 +121,85 @@ pub struct SessionAccountAssignment {
 pub struct SessionQuotaRollup {
     pub session: SessionQuotaUsage,
     pub daily: BTreeMap<String, SessionQuotaUsage>,
+    #[serde(default)]
+    pub model_samples: Vec<ModelQuotaSample>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelQuotaSample {
+    pub date: String,
+    pub model: String,
+    pub window_minutes: i64,
+    pub observed_start_at: String,
+    pub observed_end_at: String,
+    pub tokens: i64,
+    pub observed_delta_percent: f64,
+}
+
+#[derive(Debug, Default)]
+pub struct ModelQuotaAggregate {
+    pub tokens: i64,
+    pub observed_percent: f64,
+    pub samples: i64,
+}
+
+pub fn query_model_quota_samples(
+    db: &Connection,
+    start_date: &str,
+    end_date: &str,
+    account_id: Option<&str>,
+) -> Result<BTreeMap<(String, i64), ModelQuotaAggregate>, String> {
+    let mut statement = db
+        .prepare(
+            "SELECT rollups.quota_usage_json FROM session_file_rollups rollups
+             LEFT JOIN session_account_assignments assignments ON assignments.path = rollups.path
+             WHERE rollups.quota_usage_json IS NOT NULL AND (
+               ? IS NULL OR (? = ? AND assignments.account_id IS NULL) OR assignments.account_id = ?
+             )",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![account_id, account_id, UNKNOWN_ACCOUNT_ID, account_id], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    let mut samples_by_window = BTreeMap::<i64, Vec<ModelQuotaSample>>::new();
+    for row in rows {
+        let usage: SessionQuotaRollup =
+            serde_json::from_str(&row.map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
+        for sample in usage.model_samples {
+            samples_by_window
+                .entry(sample.window_minutes)
+                .or_default()
+                .push(sample);
+        }
+    }
+    let mut totals = BTreeMap::<(String, i64), ModelQuotaAggregate>::new();
+    for (window_minutes, mut samples) in samples_by_window {
+        samples.sort_by(|left, right| left.observed_start_at.cmp(&right.observed_start_at));
+        let mut index = 0;
+        while index < samples.len() {
+            let mut next = index + 1;
+            let mut latest_end = samples[index].observed_end_at.as_str();
+            while next < samples.len() && samples[next].observed_start_at.as_str() < latest_end {
+                latest_end = latest_end.max(samples[next].observed_end_at.as_str());
+                next += 1;
+            }
+            if next == index + 1 {
+                let sample = &samples[index];
+                if sample.date.as_str() >= start_date && sample.date.as_str() <= end_date {
+                    let total = totals
+                        .entry((sample.model.clone(), window_minutes))
+                        .or_default();
+                    total.tokens += sample.tokens;
+                    total.observed_percent += sample.observed_delta_percent;
+                    total.samples += 1;
+                }
+            }
+            index = next;
+        }
+    }
+    Ok(totals)
 }
 
 #[derive(Debug, Clone)]
@@ -1037,6 +1116,71 @@ mod tests {
     use crate::pricing::PricingSource;
     use crate::types::SessionQuotaWindowUsage;
     use chrono::Utc;
+
+    #[test]
+    fn model_quota_samples_use_only_the_selected_account() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE session_file_rollups (path TEXT, quota_usage_json TEXT);
+                          CREATE TABLE session_account_assignments (path TEXT, account_id TEXT)").unwrap();
+        for (path, percent) in [("a", 2.0), ("b", 10.0), ("legacy", 1.0)] {
+            let rollup = SessionQuotaRollup {
+                model_samples: vec![ModelQuotaSample {
+                    date: "2026-04-02".to_string(), model: "gpt-6.1-sol".to_string(), window_minutes: 300,
+                    observed_start_at: "2026-04-02T00:00:00Z".to_string(),
+                    observed_end_at: "2026-04-02T01:00:00Z".to_string(),
+                    tokens: 1_000_000, observed_delta_percent: percent,
+                }],
+                ..Default::default()
+            };
+            db.execute("INSERT INTO session_file_rollups VALUES (?, ?)", params![path, serde_json::to_string(&rollup).unwrap()]).unwrap();
+        }
+        db.execute_batch("INSERT INTO session_account_assignments VALUES ('a', 'account-a'), ('b', 'account-b')").unwrap();
+        for (account, expected) in [("account-a", 2.0), ("account-b", 10.0), (UNKNOWN_ACCOUNT_ID, 1.0)] {
+            let totals = query_model_quota_samples(&db, "2026-04-02", "2026-04-02", Some(account)).unwrap();
+            assert_eq!(totals.len(), 1);
+            assert_eq!(totals[&("gpt-6.1-sol".to_string(), 300)].observed_percent, expected);
+        }
+    }
+
+    #[test]
+    fn model_quota_samples_exclude_overlapping_sessions() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE session_file_rollups (path TEXT, quota_usage_json TEXT);
+                          CREATE TABLE session_account_assignments (path TEXT, account_id TEXT)")
+            .unwrap();
+        let sample = |model: &str, window_minutes: i64, start: &str, end: &str| ModelQuotaSample {
+            date: "2026-04-02".to_string(),
+            model: model.to_string(),
+            window_minutes,
+            observed_start_at: start.to_string(),
+            observed_end_at: end.to_string(),
+            tokens: 1_000_000,
+            observed_delta_percent: 2.0,
+        };
+        let rows = [
+            sample("a", 300, "2026-04-02T00:00:00Z", "2026-04-02T01:00:00Z"),
+            sample("b", 300, "2026-04-02T00:30:00Z", "2026-04-02T01:30:00Z"),
+            sample("a", 300, "2026-04-02T02:00:00Z", "2026-04-02T03:00:00Z"),
+            sample("a", 300, "2026-04-02T03:00:00Z", "2026-04-02T04:00:00Z"),
+            sample("a", 10080, "2026-04-02T00:00:00Z", "2026-04-02T01:00:00Z"),
+        ];
+        for entry in rows {
+            let rollup = SessionQuotaRollup {
+                model_samples: vec![entry],
+                ..Default::default()
+            };
+            db.execute(
+                "INSERT INTO session_file_rollups (quota_usage_json) VALUES (?)",
+                [serde_json::to_string(&rollup).unwrap()],
+            )
+            .unwrap();
+        }
+        let totals = query_model_quota_samples(&db, "2026-04-02", "2026-04-02", None).unwrap();
+        assert_eq!(totals[&("a".to_string(), 300)].tokens, 2_000_000);
+        assert_eq!(totals[&("a".to_string(), 300)].samples, 2);
+        assert!(!totals.contains_key(&("b".to_string(), 300)));
+        assert_eq!(totals[&("a".to_string(), 10080)].tokens, 1_000_000);
+    }
 
     #[test]
     fn daily_quota_percents_merge_overlapping_sessions_and_add_reset_windows() {

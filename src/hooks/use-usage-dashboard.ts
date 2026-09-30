@@ -453,7 +453,7 @@ export function useUsageDashboard() {
     lastAutoScanTimeRef.current = now;
     const startedAt = performance.now();
     try {
-      await scanAndReloadOverview(startedAt, { force: hasExpiredCodexLimitWindow(codexLimits) });
+      await scanAndReloadOverview(startedAt, { force: codexLimitsError !== null || hasExpiredCodexLimitWindow(codexLimits) });
     } catch (scanError) {
       setError(errorMessage(scanError, "Background refresh failed."));
     }
@@ -627,7 +627,7 @@ export function useUsageDashboard() {
     } else if (refresh.limitsError) {
       setCodexLimitsError(refresh.limitsError);
       lastLimitsFetchTimeRef.current = Date.now();
-    } else if (refresh.limitsSkipped && hasExpiredCodexLimitWindow(codexLimits)) {
+    } else if (refresh.limitsSkipped && (codexLimitsError !== null || hasExpiredCodexLimitWindow(codexLimits))) {
       await loadCodexLimits({ force: true });
     }
 
@@ -740,16 +740,19 @@ export function useUsageDashboard() {
   useEffect(() => {
     if (!bootstrapped) return;
 
+    let cancelled = false;
     let unlistenFn: (() => void) | null = null;
-    let disposed = false;
 
     const setupListener = async () => {
       try {
         const unsubscribe = await listen<UsageRefreshResponse>("background-refresh-completed", async (event) => {
           await handleBackgroundRefreshCompleted(event.payload);
         });
-        if (disposed) unsubscribe();
-        else unlistenFn = unsubscribe;
+        if (cancelled) {
+          unsubscribe();
+        } else {
+          unlistenFn = unsubscribe;
+        }
       } catch (err) {
         console.error("Failed to setup background refresh listener:", err);
       }
@@ -758,12 +761,10 @@ export function useUsageDashboard() {
     void setupListener();
 
     return () => {
-      disposed = true;
-      if (unlistenFn) {
-        unlistenFn();
-      }
+      cancelled = true;
+      unlistenFn?.();
     };
-  }, [bootstrapped, handleBackgroundRefreshCompleted]);
+  }, [bootstrapped]);
 
   // Update tray icon whenever limits, overview, translation, or tray settings change
   useEffect(() => {

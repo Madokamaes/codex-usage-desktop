@@ -108,7 +108,7 @@ describe("model analytics", () => {
     const user = userEvent.setup();
     screen.getByRole("combobox", { name: "Sort descending" }).focus();
     await user.keyboard("[Enter][ArrowDown][Enter]");
-    expect(document.querySelector("tbody tr")?.getAttribute("data-model-row")).toBe("alpha");
+    expect(document.querySelector("tr[data-model-row]")?.getAttribute("data-model-row")).toBe("alpha");
     expect(document.querySelector("[data-model-row='beta']")).toHaveAttribute("data-model-color", colors.get("beta"));
   });
 
@@ -118,5 +118,40 @@ describe("model analytics", () => {
     expect(screen.getByRole("heading", { name: "Token 构成" })).toBeInTheDocument();
     expect(screen.getByText("模型比较")).toBeInTheDocument();
     await i18n.changeLanguage("en");
+  });
+
+  it("compares quota estimates on a shared scale and expands the existing details", async () => {
+    const user = userEvent.setup();
+    render(<ModelUsageCard models={[model("gpt-a", 2_000_000, {
+      fiveHourQuota: {
+        percent: 125, lowerPercent: 120, upperPercent: 130,
+        percentPerMillionTokens: 2, lowerPercentPerMillionTokens: 1, upperPercentPerMillionTokens: 3,
+        sampledTokens: 1_000_000, samples: 1,
+      },
+    }), model("gpt-b", 1_000_000, {
+      weeklyQuota: {
+        percent: 25, lowerPercent: 20, upperPercent: 30,
+        percentPerMillionTokens: 25, lowerPercentPerMillionTokens: 20, upperPercentPerMillionTokens: 30,
+        sampledTokens: 1_000_000, samples: 2,
+      },
+    })]} />);
+    const row = document.querySelector('[data-quota-model="gpt-a"]') as HTMLElement;
+    expect(screen.getByText("Total scale: 0–125.0%")).toBeInTheDocument();
+    expect(screen.getByText("Per 1M tokens scale: 0–100.0%")).toBeInTheDocument();
+    expect(within(row).getByRole("img", { name: "5-hour quota · Total: 125.0%" }).firstElementChild).toHaveStyle({ width: "100%" });
+    expect(within(row).getByRole("img", { name: "5-hour quota · Per 1M tokens: 2.0%" }).firstElementChild).toHaveStyle({ width: "2%" });
+    const weekly = document.querySelector('[data-quota-model="gpt-b"]') as HTMLElement;
+    expect(within(weekly).getByRole("img", { name: "Weekly quota · Total: 25.0%" }).firstElementChild).toHaveStyle({ width: "20%" });
+    expect(within(weekly).getByRole("img", { name: "Weekly quota · Per 1M tokens: 25.0%" }).firstElementChild).toHaveStyle({ width: "25%" });
+    expect(within(row).getByRole("img", { name: "Weekly quota · Per 1M tokens: No attributable snapshots" })).toBeInTheDocument();
+    expect(row).not.toHaveAttribute("open");
+    await user.click(within(row).getByText("gpt-a"));
+    expect(row).toHaveAttribute("open");
+    expect(within(row).getByText("Total ≈ 125.0%")).toBeVisible();
+    expect(within(row).getByText("Per 1M tokens ≈ 2.0%")).toBeInTheDocument();
+    expect(within(row).getByText("Sample: 1,000,000 tokens · snapshot groups: 1")).toBeInTheDocument();
+    expect(within(row).getByText("No attributable snapshots")).toBeInTheDocument();
+    await user.click(within(row).getByText("gpt-a"));
+    expect(row).not.toHaveAttribute("open");
   });
 });
