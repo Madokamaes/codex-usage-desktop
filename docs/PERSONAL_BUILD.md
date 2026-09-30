@@ -62,3 +62,9 @@ CLI start logs include PID and executable path; logs retain three rotated files 
 
 Validation: cargo test --lib --offline; pnpm typecheck; pnpm test;
 focused WDIO automatic-updates and pricing specs through the native Tauri app.
+
+Verified locally on 2026-09-30 for 3.8.4: 148 Rust tests, 190 Vitest tests,
+seven release script tests, both TypeScript checks, and four native WDIO checks passed.
+Windows NSIS packaging and updater signing succeeded. The verifier used the updater's
+minisign algorithm, accepted the signed installer, and rejected a changed byte.
+The local installation retained both recorded accounts and all 206 session assignments.
