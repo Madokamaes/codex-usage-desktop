@@ -14,6 +14,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
@@ -59,6 +63,16 @@ jobs:
           if [[ "${RELEASE_TAG}" != "${expected}" ]]; then
             echo "Release tag ${RELEASE_TAG} does not match src-tauri/tauri.conf.json version ${version}."
             echo "Expected tag: ${expected}"
+            exit 1
+          fi
+
+      - name: Validate fork signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            echo "Configure this fork's TAURI_SIGNING_PRIVATE_KEY repository secret before releasing."
             exit 1
           fi
 
@@ -109,6 +123,12 @@ jobs:
           fi
 
           {
+            echo "## About this fork / 关于此 Fork"
+            echo
+            echo "Fork of itvincent-git/codex-usage-desktop. Main added feature: per-account session quota tracking (分账号会话额度统计)."
+            echo "Automatically downloads, verifies, installs, and restarts for signed updates from this repository."
+            echo "Existing users must install a fork release once to switch update channels. Local usage data is retained."
+            echo
             echo "## What's Changed"
             echo
 

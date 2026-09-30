@@ -1,7 +1,7 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import { listen } from "@tauri-apps/api/event";
-import { UPSTREAM_UPDATES_ENABLED } from "@/lib/build-policy";
+import { UPDATE_REPOSITORY } from "@/lib/build-policy";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -305,6 +305,8 @@ export function useUsageDashboard() {
   const lastAutoScanTimeRef = useRef<number>(0);
   const scanInFlightRef = useRef<Promise<void> | null>(null);
   const updateCheckInFlightRef = useRef<Promise<void> | null>(null);
+  const updateInstallInFlightRef = useRef(false);
+  const updateInstalledRef = useRef(false);
   const windowActivationInFlightRef = useRef(false);
 
   const loadOverview = useEffectEvent(async (nextRange: RangeKey, accountId = selectedAccountId) => {
@@ -458,10 +460,10 @@ export function useUsageDashboard() {
   });
 
   const performBackgroundUpdateCheck = useEffectEvent(async () => {
-    if (!UPSTREAM_UPDATES_ENABLED) {
-      setUpdateInfo(null);
-      for (const key of ["last_update_check_result", "last_update_check_time", "last_update_check_failed_time", "dismissed_update_tag"]) localStorage.removeItem(key);
-      return;
+    if (localStorage.getItem("update_channel") !== UPDATE_REPOSITORY) {
+      // Cached releases from a different distribution must never trigger installation.
+      for (const key of ["last_update_check_result", "last_update_check_time", "last_update_check_failed_time", "last_update_install_failed_time", "dismissed_update_tag"]) localStorage.removeItem(key);
+      localStorage.setItem("update_channel", UPDATE_REPOSITORY);
     }
     let cachedInfo: UpdateCheckResponse | null = null;
     try {
@@ -531,7 +533,7 @@ export function useUsageDashboard() {
       // Clear any prior failure timestamp on success
       localStorage.removeItem("last_update_check_failed_time");
 
-      if (info.notModified && cachedInfo) {
+      if (info.notModified && cachedInfo && info.latestVersion === cachedInfo.latestVersion) {
         // GitHub API returned 304 Not Modified. Reuse our cached result but refresh the check timestamp.
         setUpdateInfo(cachedInfo);
         localStorage.setItem("last_update_check_time", now.toString());
@@ -649,7 +651,7 @@ export function useUsageDashboard() {
   }, [bootstrap]);
 
   useEffect(() => {
-    if (!bootstrapped || !UPSTREAM_UPDATES_ENABLED) return;
+    if (!bootstrapped) return;
 
     let cancelled = false;
     let timer: number | null = null;
@@ -1079,7 +1081,6 @@ export function useUsageDashboard() {
   };
 
   const handleManualUpdateCheck = async () => {
-    if (!UPSTREAM_UPDATES_ENABLED) return;
     setIsUpdateChecking(true);
     setUpdateCheckError(null);
     try {
@@ -1092,8 +1093,6 @@ export function useUsageDashboard() {
 
       if (info.hasUpdate) {
         setIsUpdateDismissed(false); // Reset dismissal on manual trigger
-        setUpdateInstallStatus("idle");
-        setUpdateInstallError(null);
       }
     } catch (e) {
       setUpdateCheckError(errorMessage(e, "Failed to check for updates."));
@@ -1102,36 +1101,61 @@ export function useUsageDashboard() {
     }
   };
 
-  const handleUpgrade = async () => {
-    if (!UPSTREAM_UPDATES_ENABLED) return;
-    if (updateInstallStatus === "installed") {
-      try {
-        localStorage.removeItem("last_update_check_result");
-        localStorage.removeItem("last_update_check_time");
-        await restartApp();
-      } catch (e) {
-        setUpdateInstallError(errorMessage(e, "Failed to restart the app."));
-      }
-      return;
-    }
-
-    if (!updateInfo?.hasUpdate || updateInstallStatus === "downloading") {
-      return;
-    }
-
-    setUpdateInstallStatus("downloading");
-    setUpdateProgress(emptyUpdateProgress);
+  const installUpdateAndRestart = async () => {
+    if (!updateInfo?.hasUpdate || updateInstallInFlightRef.current) return;
+    // A ref guards concurrent automatic/manual attempts, including StrictMode effects.
+    updateInstallInFlightRef.current = true;
+    let installed = updateInstalledRef.current;
     setUpdateInstallError(null);
     try {
-      await downloadAndInstallUpdate();
-      setUpdateProgress((progress) => ({ ...progress, percent: 100, finished: true }));
-      setUpdateInstallStatus("installed");
+      if (!installed) {
+        setUpdateInstallStatus("downloading");
+        setUpdateProgress(emptyUpdateProgress);
+        await downloadAndInstallUpdate();
+        installed = true;
+        updateInstalledRef.current = true;
+        setUpdateProgress((progress) => ({ ...progress, percent: 100, finished: true }));
+        setUpdateInstallStatus("installed");
+      }
+      localStorage.removeItem("last_update_install_failed_time");
+      localStorage.removeItem("last_update_check_result");
+      localStorage.removeItem("last_update_check_time");
+      // Windows NSIS relaunches the app itself; platforms that return here need a restart.
+      await restartApp();
     } catch (e) {
-      setUpdateInstallStatus("idle");
-      setUpdateProgress(emptyUpdateProgress);
-      setUpdateInstallError(errorMessage(e, "Failed to download and install the update."));
+      updateInstallInFlightRef.current = false;
+      if (!installed) {
+        setUpdateInstallStatus("idle");
+        setUpdateProgress(emptyUpdateProgress);
+      }
+      localStorage.setItem("last_update_install_failed_time", Date.now().toString());
+      setUpdateInstallError(errorMessage(e, installed ? "Failed to restart the app." : "Failed to download and install the update."));
     }
   };
+
+  const performAutomaticUpdate = useEffectEvent(installUpdateAndRestart);
+
+  useEffect(() => {
+    if (!updateInfo?.hasUpdate) return;
+    let cancelled = false;
+    let timer: number;
+    const schedule = () => {
+      const failedAt = Number(localStorage.getItem("last_update_install_failed_time"));
+      const delay = failedAt > 0 ? Math.max(0, failedAt + UPDATE_CHECK_RETRY_MS - Date.now()) : 0;
+      timer = window.setTimeout(() => {
+        void performAutomaticUpdate().then(() => {
+          if (!cancelled && localStorage.getItem("last_update_install_failed_time")) schedule();
+        });
+      }, delay);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [updateInfo, performAutomaticUpdate]);
+
+  const handleUpgrade = () => installUpdateAndRestart();
 
   const handleOpenUpdateRelease = async () => {
     if (updateInfo?.releaseUrl) {

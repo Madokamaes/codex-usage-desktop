@@ -662,7 +662,7 @@
     "launch_at_login_desc": "登录系统时在后台启动，并通过菜单栏或系统托盘保持可用。",
     "toggle_launch_at_login_aria": "切换开机自启动",
     "updates_title": "应用更新",
-    "updates_desc": "检查新版本并管理桌面客户端的更新升级。",
+    "updates_desc": "自动检查此 Fork 的新版本，下载、安装后自动重启，无需点击更新。检查间隔为 24 小时；失败后 1 小时重试。",
     "current_version": "当前运行版本",
     "btn_checking": "正在检查...",
     "btn_check_updates": "检查更新",

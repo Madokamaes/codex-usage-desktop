@@ -1,8 +1,12 @@
 # Codex Usage Desktop
 
+**This is Madokamaes’s fork of [itvincent-git/codex-usage-desktop](https://github.com/itvincent-git/codex-usage-desktop). Its main added feature is per-account session quota tracking (分账号会话额度统计).** Filter daily, monthly, model, project, and session usage by the account that opened each session. Earlier sessions without recorded identity remain under Unknown account. Live quota cards show the currently authenticated account.
+
+This fork also includes GPT-6.1 Sol API pricing and **automatic signed updates**: download, installation, and restart happen without clicking Upgrade. Install a fork release once to switch from the original/private build; later releases arrive automatically while the app is running. See [fork maintenance](docs/PERSONAL_BUILD.md) for release instructions.
+
 > **Know where your Codex tokens go, how much quota you have left, and when your limits reset — all from one local desktop app.**
 
-**[Download for Windows x64](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)** · **[Apple Silicon](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg)** · **[Intel Mac](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)** · [中文说明](README_zh.md) · [日本語](README_ja.md)
+**[Download for Windows x64](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)** · **[Apple Silicon](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg)** · **[Intel Mac](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)** · [中文说明](README_zh.md) · [日本語](README_ja.md)
 
 ⭐ If Codex Usage Desktop is useful to you, consider giving the project a [**Star**](https://github.com/itvincent-git/codex-usage-desktop).
 
@@ -117,7 +121,7 @@ Codex Usage Desktop is designed to stay out of your way:
 - Native macOS and Windows app
 - macOS menu bar / Windows system tray
 - Launch at login
-- Automatic update checks
+- Automatic signed updates with unattended installation and restart
 - English, 简体中文, and 日本語
 - Windows WSL Codex session detection
 - Light and dark themes
@@ -163,7 +167,7 @@ No analytics server to deploy. No database to configure. No API key to paste.
 
 ### Windows 10/11 x64
 
-[Download the latest Windows setup executable](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe), open it, and follow the installer. The current-user NSIS installer does not require a system-wide installation.
+[Download the latest Windows setup executable](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe), open it, and follow the installer. The current-user NSIS installer does not require a system-wide installation.
 
 > [!WARNING]
 > The Windows installer is not Authenticode-signed yet, so Microsoft Defender SmartScreen may show an unrecognized-app warning. Verify that the file came from this repository's GitHub release before continuing.
@@ -176,10 +180,10 @@ Choose the build for your Mac:
 
 | Mac                                       | Download                                                                                                                                           |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apple Silicon (M1, M2, M3, M4, and newer) | [Download the latest ARM64 DMG](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg) |
-| Intel                                     | [Download the latest x64 DMG](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)     |
+| Apple Silicon (M1, M2, M3, M4, and newer) | [Download the latest ARM64 DMG](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg) |
+| Intel                                     | [Download the latest x64 DMG](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)     |
 
-Open the DMG and move **Codex Usage Desktop** to Applications. You can also browse the [latest release and release notes](https://github.com/itvincent-git/codex-usage-desktop/releases/latest).
+Open the DMG and move **Codex Usage Desktop** to Applications. You can also browse the [latest release and release notes](https://github.com/Madokamaes/codex-usage-desktop/releases/latest).
 
 > [!NOTE]
 > The app does not bypass macOS Gatekeeper. If macOS blocks the first launch, open **System Settings → Privacy & Security** and allow the app.

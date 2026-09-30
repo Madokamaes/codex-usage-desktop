@@ -1,4 +1,3 @@
-import { UPSTREAM_UPDATES_ENABLED } from "@/lib/build-policy";
 import { RotateCcw, Sparkles, RefreshCw, CheckCircle, ArrowUpRight, RotateCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -427,7 +426,7 @@ export function SettingsPage({
       <Card>
         <CardHeader>
           <CardTitle>{t("settings.updates_title")}</CardTitle>
-          <CardDescription>{UPSTREAM_UPDATES_ENABLED ? t("settings.updates_desc") : "个人修改版：已关闭官方更新检查、通知和下载安装。"}</CardDescription>
+          <CardDescription>{t("settings.updates_desc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -444,10 +443,10 @@ export function SettingsPage({
                   size="lg" 
                   data-testid="check-upstream-updates"
                   onClick={onCheckUpdates} 
-                  disabled={!UPSTREAM_UPDATES_ENABLED || isDisabled || isUpdateChecking}
+                  disabled={isDisabled || isUpdateChecking || isInstallingUpdate}
                 >
                   <RefreshCw className={`h-4 w-4 ${isUpdateChecking ? "animate-spin" : ""}`} />
-                  {!UPSTREAM_UPDATES_ENABLED ? "官方更新已关闭" : isUpdateChecking ? t("settings.btn_checking") : t("settings.btn_check_updates")}
+                  {isUpdateChecking ? t("settings.btn_checking") : t("settings.btn_check_updates")}
                 </Button>
               </div>
             </div>

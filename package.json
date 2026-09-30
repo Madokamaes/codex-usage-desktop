@@ -1,13 +1,13 @@
 {
   "name": "codex-usage-desktop",
-  "version": "3.6.1",
+  "version": "3.6.2",
   "private": true,
   "type": "module",
-  "description": "Local-first desktop dashboard for Codex CLI token usage and cost estimates.",
-  "homepage": "https://github.com/itvincent-git/codex-usage-desktop#readme",
+  "description": "Codex Usage Desktop fork with per-account session quota tracking and automatic updates.",
+  "homepage": "https://github.com/Madokamaes/codex-usage-desktop#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/itvincent-git/codex-usage-desktop.git"
+    "url": "git+https://github.com/Madokamaes/codex-usage-desktop.git"
   },
   "license": "MIT",
   "keywords": [

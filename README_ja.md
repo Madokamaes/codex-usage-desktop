@@ -1,8 +1,12 @@
 # Codex Usage Desktop
 
+**[itvincent-git/codex-usage-desktop](https://github.com/itvincent-git/codex-usage-desktop) の Madokamaes Fork です。主な追加機能はアカウント別のセッション利用枠・使用量の集計です。** セッション開始時のアカウントで日別・月別・モデル・プロジェクト・セッションを絞り込めます。過去のアカウント不明なセッションは「不明」として残り、現在の利用枠はログイン中のアカウントについて表示されます。
+
+GPT-6.1 Sol の API 料金と、署名付きリリースの**自動ダウンロード・インストール・再起動**にも対応します。この Fork のインストーラーを一度導入すると、以降はアプリ実行中に自動更新されます。[メンテナンス手順](docs/PERSONAL_BUILD.md)も参照してください。
+
 > **Codex のトークンの使い道、残りの利用枠、リセット時刻を、ひとつのローカルデスクトップアプリで把握。**
 
-**[Windows x64 版をダウンロード](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)** · **[Apple Silicon 版](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg)** · **[Intel Mac 版](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)** · [English README](README.md) · [中文说明](README_zh.md)
+**[Windows x64 版をダウンロード](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)** · **[Apple Silicon 版](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg)** · **[Intel Mac 版](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)** · [English README](README.md) · [中文说明](README_zh.md)
 
 ⭐ Codex Usage Desktop が役に立ったら、[プロジェクトに **Star** を付けて](https://github.com/itvincent-git/codex-usage-desktop)応援してください。
 
@@ -163,7 +167,7 @@ Codex Usage Desktop は、これらのデータをパソコン内に保持しま
 
 ### Windows 10/11 x64
 
-[最新の Windows セットアップ実行ファイルをダウンロード](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)し、ファイルを開いて画面の案内に従ってください。現在のユーザー向けの NSIS インストーラーであるため、システム全体へのインストールは必要ありません。
+[最新の Windows セットアップ実行ファイルをダウンロード](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)し、ファイルを開いて画面の案内に従ってください。現在のユーザー向けの NSIS インストーラーであるため、システム全体へのインストールは必要ありません。
 
 > [!WARNING]
 > Windows インストーラーにはまだ Authenticode 署名がないため、Microsoft Defender SmartScreen により未認識のアプリとして警告される場合があります。続行する前に、このリポジトリの GitHub Release から取得したファイルであることを確認してください。
@@ -176,10 +180,10 @@ Codex Usage Desktop は、これらのデータをパソコン内に保持しま
 
 | Mac                                        | ダウンロード                                                                                                                                          |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apple Silicon（M1、M2、M3、M4 以降）      | [最新の ARM64 DMG をダウンロード](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg) |
-| Intel                                      | [最新の x64 DMG をダウンロード](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)     |
+| Apple Silicon（M1、M2、M3、M4 以降）      | [最新の ARM64 DMG をダウンロード](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg) |
+| Intel                                      | [最新の x64 DMG をダウンロード](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)     |
 
-DMG を開き、**Codex Usage Desktop** を「アプリケーション」フォルダに移動してください。[最新リリースとリリースノート](https://github.com/itvincent-git/codex-usage-desktop/releases/latest)も確認できます。
+DMG を開き、**Codex Usage Desktop** を「アプリケーション」フォルダに移動してください。[最新リリースとリリースノート](https://github.com/Madokamaes/codex-usage-desktop/releases/latest)も確認できます。
 
 > [!NOTE]
 > このアプリは macOS の Gatekeeper を無効化・回避しません。初回起動時に macOS によってブロックされた場合は、**システム設定 → プライバシーとセキュリティ**を開き、アプリの起動を許可してください。

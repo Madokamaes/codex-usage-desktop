@@ -1,8 +1,12 @@
 # Codex Usage Desktop
 
+**这是 [itvincent-git/codex-usage-desktop](https://github.com/itvincent-git/codex-usage-desktop) 的 Madokamaes Fork，主要新增功能为「分账号会话额度统计」。** 按开启会话的账号筛选每日、每月、模型、项目和会话用量；历史日志未记录账号的会话保留为「未知账号」。实时额度卡片显示当前登录账号的额度。
+
+同时保留 GPT-6.1 Sol API 价格，并接入本仓库的**签名自动更新**：发现新版后自动下载、静默安装并重启，无需点击升级。原版或此前的私有修改版需先安装一次本 Fork 安装包，之后应用运行时会自动获取后续版本。发布步骤见[维护说明](docs/PERSONAL_BUILD.md)。
+
 > **看清 Codex Token 用在哪里、额度还剩多少、何时重置——一个本地桌面应用就够了。**
 
-**[下载 Windows x64 版](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)** · **[Apple 芯片版](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg)** · **[Intel Mac 版](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)** · [English README](README.md) · [日本語](README_ja.md)
+**[下载 Windows x64 版](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)** · **[Apple 芯片版](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg)** · **[Intel Mac 版](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)** · [English README](README.md) · [日本語](README_ja.md)
 
 ⭐ 如果 Codex Usage Desktop 对你有帮助，欢迎[为项目点亮 **Star**](https://github.com/itvincent-git/codex-usage-desktop)。
 
@@ -163,7 +167,7 @@ Codex Usage Desktop 将这些数据留在你的电脑上。
 
 ### Windows 10/11 x64
 
-[下载最新版 Windows 安装程序](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)，打开后按提示安装。NSIS 安装器采用当前用户安装模式，不需要进行全系统安装。
+[下载最新版 Windows 安装程序](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-windows-x64-setup.exe)，打开后按提示安装。NSIS 安装器采用当前用户安装模式，不需要进行全系统安装。
 
 > [!WARNING]
 > Windows 安装器目前没有 Authenticode 签名，因此 Microsoft Defender SmartScreen 可能提示“无法识别的应用”。继续前请确认文件来自本仓库的 GitHub Release。
@@ -176,10 +180,10 @@ Codex Usage Desktop 将这些数据留在你的电脑上。
 
 | Mac                         | 下载                                                                                                                                   |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Apple 芯片（M1、M2、M3、M4 及更新型号） | [下载最新版 ARM64 DMG](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg) |
-| Intel                       | [下载最新版 x64 DMG](https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)     |
+| Apple 芯片（M1、M2、M3、M4 及更新型号） | [下载最新版 ARM64 DMG](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-arm64.dmg) |
+| Intel                       | [下载最新版 x64 DMG](https://github.com/Madokamaes/codex-usage-desktop/releases/latest/download/codex-usage-desktop-macos-x64.dmg)     |
 
-打开 DMG，并将 **Codex Usage Desktop** 移入“应用程序”目录。你也可以查看[最新版本与更新说明](https://github.com/itvincent-git/codex-usage-desktop/releases/latest)。
+打开 DMG，并将 **Codex Usage Desktop** 移入“应用程序”目录。你也可以查看[最新版本与更新说明](https://github.com/Madokamaes/codex-usage-desktop/releases/latest)。
 
 > [!NOTE]
 > 应用不会绕过 macOS Gatekeeper。如果首次启动被系统拦截，请打开 **系统设置 → 隐私与安全性** 并允许打开。

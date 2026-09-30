@@ -1,4 +1,8 @@
 {
+  "3.6.2": {
+    "zh": "- 创建独立 Fork，主要新增功能为分账号会话额度统计\n- 接入 Madokamaes/codex-usage-desktop 的签名发布渠道，自动检查、下载、静默安装并重启\n- 自动清除原版更新缓存，更新失败后 1 小时重试\n- 保留 GPT-6.1 Sol API 价格及个人版修复",
+    "en": "- Establish an independent fork focused on per-account session quota tracking\n- Automatically check, download, silently install, and restart for signed Madokamaes/codex-usage-desktop releases\n- Clear old upstream update caches and retry failed updates after one hour\n- Retain GPT-6.1 Sol API pricing and personal build fixes"
+  },
   "3.6.1": {
     "zh": "- 接入 GPT-6.1 Sol 标准 API 价格：输入 $2.00、缓存输入 $0.10、输出 $10.00 / 百万 token\n- 旧缓存及远程目录缺少模型时补充内置价格，并重新计算已有费用\n- 包含个人版 CLI 超时修复、单实例保护及关闭官方应用更新",
     "en": "- Add GPT-6.1 Sol standard API pricing: $2.00 input, $0.10 cached input, and $10.00 output per million tokens\n- Supplement missing cached and remote rates with embedded pricing and recalculate existing costs\n- Include personal build CLI timeout fixes, single-instance protection, and disabled upstream app updates"

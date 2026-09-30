@@ -8,8 +8,6 @@ import App from "./App";
 import i18n from "./i18n";
 import tauriConfig from "../src-tauri/tauri.conf.json";
 
-vi.mock("@/lib/build-policy", () => ({ UPSTREAM_UPDATES_ENABLED: true }));
-
 const invokeMock = vi.hoisted(() => vi.fn());
 const forecastInvokeMock = vi.hoisted(() => vi.fn());
 const latestResetInvokeMock = vi.hoisted(() => vi.fn());
@@ -206,6 +204,7 @@ describe("App", () => {
     Element.prototype.setPointerCapture = vi.fn();
     Element.prototype.releasePointerCapture = vi.fn();
     localStorage.clear();
+    localStorage.setItem("update_channel", "Madokamaes/codex-usage-desktop");
     invokeMock.mockReset();
     forecastInvokeMock.mockReset();
     forecastInvokeMock.mockRejectedValue(new Error("Forecast unavailable"));
@@ -2433,151 +2432,93 @@ describe("App", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("export_usage", expect.anything());
   });
 
-  it("dismisses the main update banner and shows the eye-catching upgrade button in the header", async () => {
-    localStorage.clear();
-    invokeMock.mockImplementation(async (command: string, args?: { range?: string; url?: string }) => {
-      if (command === "scan_usage") {
-        return { importedDays: 3, scannedAt: "2026-04-26T00:00:00.000Z", timezone: "UTC" };
-      }
-
-      if (command === "fetch_codex_limits") {
-        return {
-          session: { usedPercent: 20, remainingPercent: 80, windowMinutes: 300, resetsAt: "2026-04-26T05:00:00.000Z" },
-          weekly: { usedPercent: 45, remainingPercent: 55, windowMinutes: 10080, resetsAt: "2026-04-30T00:00:00.000Z" },
-          updatedAt: "2026-04-26T00:00:00.000Z",
-          source: "cli-rpc",
-        };
-      }
-
-      if (command === "fetch_overview" && args?.range === "30d") {
-        return {
-          range: "30d",
-          days: 30,
-          timezone: "UTC",
-          startDate: "2026-03-28",
-          endDate: "2026-04-26",
-          updatedAt: "2026-04-26T00:00:00.000Z",
-          daily: [],
-          totals: {
-            inputTokens: 2600,
-            cachedInputTokens: 400,
-            outputTokens: 800,
-            totalTokens: 3400,
-            costUSD: 0.0088685,
-            avgTokensPerDay: 113.3333333,
-            avgCostPerDay: 0.0002956,
-            cacheHitRate: 0.1538,
-            costPerMillionTokens: 2.6083,
-          },
-          models: [],
-          projects: [],
-        };
-      }
-
+  function mockAvailableUpdate(install: () => Promise<unknown>, restart: () => Promise<unknown> = async () => null) {
+    mockLoadedDashboard();
+    const dashboard = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation(async (command: string, args?: any) => {
       if (command === "check_for_updates") {
         return {
-          hasUpdate: true,
-          currentVersion: "0.4.0",
-          latestVersion: "0.5.0",
-          latestTag: "v0.5.0",
-          releaseName: "Big Release",
-          releaseNotes: "Feature details",
-          releaseUrl: "https://github.com/test/release",
+          hasUpdate: true, currentVersion: tauriConfig.version, latestVersion: "9.0.0", latestTag: "app-v9.0.0",
+          releaseName: "Fork update", releaseNotes: "Per-account session quota tracking", releaseUrl: "https://github.com/Madokamaes/codex-usage-desktop/releases/tag/app-v9.0.0",
         };
       }
-
-      if (command === "download_and_install_update") {
-        return { version: "0.5.0" };
-      }
-
-      if (command === "restart_app") {
-        return null;
-      }
-
-      throw new Error(`Unexpected invoke: ${command}`);
+      if (command === "download_and_install_update") return install();
+      if (command === "restart_app") return restart();
+      return dashboard(command, args);
     });
+  }
 
-    render(<App />);
-
-    // Wait for the main update banner to be displayed
-    await waitFor(() => expect(screen.getByText("New update available: v0.5.0")).toBeInTheDocument());
-
-    // Click the X button to dismiss the banner
-    const dismissButton = screen.getByRole("button", { name: "Dismiss update notification" });
-    await userEvent.click(dismissButton);
-
-    // Main update banner should disappear
-    expect(screen.queryByText("New update available: v0.5.0")).not.toBeInTheDocument();
-
-    // Check that the persistent dismiss tag was stored in localStorage
-    expect(localStorage.getItem("dismissed_update_tag")).toBe("v0.5.0");
-
-    // The small upgrade button in the header next to CODEX USAGE DESKTOP should appear
-    const headerUpgradeButton = screen.getByRole("button", { name: "Upgrade v0.5.0" });
-    expect(headerUpgradeButton).toBeInTheDocument();
-
-    // Click the header upgrade button to download and install the update
-    await userEvent.click(headerUpgradeButton);
-    expect(invokeMock).toHaveBeenCalledWith("download_and_install_update");
-
-    const restartButton = await screen.findByRole("button", { name: "Restart to update" });
-    await userEvent.click(restartButton);
-    expect(invokeMock).toHaveBeenCalledWith("restart_app");
+  it("automatically installs and restarts once in StrictMode without clicking", async () => {
+    mockAvailableUpdate(async () => ({ version: "9.0.0" }));
+    render(<StrictMode><App /></StrictMode>);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("restart_app"));
+    expect(invokeMock.mock.calls.filter(([command]) => command === "download_and_install_update")).toHaveLength(1);
+    expect(invokeMock.mock.calls.filter(([command]) => command === "restart_app")).toHaveLength(1);
+    expect(localStorage.getItem("last_update_check_result")).toBeNull();
   });
 
-  it("shows download progress while installing an update", async () => {
-    let finishDownload = (_value: { version: string }) => {};
-
-    invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
-      if (command === "scan_usage") {
-        return { importedDays: 3, scannedAt: "2026-04-26T00:00:00.000Z", timezone: "UTC" };
-      }
-
-      if (command === "fetch_codex_limits") {
-        throw new Error("limits unavailable");
-      }
-
-      if (command === "fetch_overview") {
-        return overview();
-      }
-
-      if (command === "check_for_updates") {
-        return {
-          hasUpdate: true,
-          currentVersion: "0.4.0",
-          latestVersion: "0.5.0",
-          latestTag: "v0.5.0",
-          releaseName: "Big Release",
-          releaseNotes: "Feature details",
-          releaseUrl: "https://github.com/test/release",
-        };
-      }
-
-      if (command === "download_and_install_update") {
-        return new Promise((resolve) => {
-          finishDownload = resolve;
-        });
-      }
-
-      throw new Error(`Unexpected invoke: ${command}`);
-    });
-
+  it("automatically installs a cached update even when its notification was dismissed", async () => {
+    localStorage.setItem("last_update_check_time", Date.now().toString());
+    localStorage.setItem("last_update_check_result", JSON.stringify({ hasUpdate: true, latestVersion: "9.0.0", latestTag: "app-v9.0.0" }));
+    localStorage.setItem("dismissed_update_tag", "app-v9.0.0");
+    mockAvailableUpdate(async () => ({ version: "9.0.0" }));
     render(<App />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("restart_app"));
+    expect(invokeMock).not.toHaveBeenCalledWith("check_for_updates");
+  });
 
-    await waitFor(() => expect(screen.getByText("New update available: v0.5.0")).toBeInTheDocument());
+  it("discards an old upstream cache when switching to the fork channel", async () => {
+    localStorage.setItem("update_channel", "itvincent-git/codex-usage-desktop");
+    localStorage.setItem("last_update_check_time", Date.now().toString());
+    localStorage.setItem("last_update_check_result", JSON.stringify({ hasUpdate: true, latestVersion: "999.0.0", latestTag: "app-v999.0.0" }));
+    mockLoadedDashboard();
+    render(<App />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("check_for_updates"));
+    expect(invokeMock).not.toHaveBeenCalledWith("download_and_install_update");
+    expect(localStorage.getItem("update_channel")).toBe("Madokamaes/codex-usage-desktop");
+  });
+
+  it("shows automatic download progress and prevents overlapping manual attempts", async () => {
+    let finishDownload = (_value: { version: string }) => {};
+    mockAvailableUpdate(() => new Promise((resolve) => { finishDownload = resolve; }));
+    render(<App />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("download_and_install_update"));
     await waitFor(() => expect(eventListeners.get("update-download-progress")?.length).toBeGreaterThan(0));
-
-    await userEvent.click(screen.getByRole("button", { name: "Upgrade Now" }));
-
-    eventListeners.get("update-download-progress")?.forEach((listener) => {
+    act(() => eventListeners.get("update-download-progress")?.forEach((listener) => {
       listener({ payload: { downloaded: 50, total: 100, finished: false } });
-    });
-
-    expect(await screen.findByRole("button", { name: "Downloading 50%" })).toBeDisabled();
+    }));
+    const button = await screen.findByRole("button", { name: "Downloading 50%" });
+    expect(button).toBeDisabled();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+    await userEvent.click(button);
+    expect(invokeMock.mock.calls.filter(([command]) => command === "download_and_install_update")).toHaveLength(1);
+    await act(async () => { finishDownload({ version: "9.0.0" }); });
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("restart_app"));
+  });
 
-    finishDownload({ version: "0.5.0" });
-    expect(await screen.findByRole("button", { name: "Restart to Update" })).toBeInTheDocument();
+  it("retries a failed automatic installation after one hour without a tight loop", async () => {
+    vi.useFakeTimers();
+    mockAvailableUpdate(async () => { throw new Error("signature verification failed"); });
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "download_and_install_update")).toHaveLength(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("restart_app");
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60_000 - 1); });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "download_and_install_update")).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "download_and_install_update")).toHaveLength(2);
+  });
+
+  it("retries a failed restart without downloading the installed update again", async () => {
+    vi.useFakeTimers();
+    mockAvailableUpdate(async () => ({ version: "9.0.0" }), async () => { throw new Error("restart failed"); });
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60_000); });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "download_and_install_update")).toHaveLength(1);
+    expect(invokeMock.mock.calls.filter(([command]) => command === "restart_app")).toHaveLength(2);
   });
 
   it("defaults to hiding the Logs tab, and shows it when toggled in Settings", async () => {
@@ -2799,6 +2740,7 @@ describe("App", () => {
 
   it("does not show update banner when cached latest version matches or is older than the current running version", async () => {
     localStorage.clear();
+    localStorage.setItem("update_channel", "Madokamaes/codex-usage-desktop");
     // Cache says update is available, but the app version is already newer or equal to the cached latest version
     localStorage.setItem("last_update_check_result", JSON.stringify({
       hasUpdate: true,

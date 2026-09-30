@@ -34,7 +34,7 @@ use types::{
     UpdateInstallResponse, UsageAccount, UsageRefreshResponse,
 };
 
-const UPSTREAM_UPDATES_ENABLED: bool = false;
+const UPDATE_REPOSITORY: &str = "Madokamaes/codex-usage-desktop";
 
 const DEFAULT_BACKGROUND_RESCAN_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const ALLOWED_BACKGROUND_RESCAN_MINUTES: [u64; 8] = [1, 2, 3, 4, 5, 15, 30, 60];
@@ -488,9 +488,6 @@ async fn check_for_updates(
     app: tauri::AppHandle,
     etag: Option<String>,
 ) -> Result<UpdateCheckResponse, String> {
-    if !UPSTREAM_UPDATES_ENABLED {
-        return Err("个人修改版已关闭官方更新检查。".into());
-    }
     tauri::async_runtime::spawn_blocking(move || {
         let current_version = app.package_info().version.to_string();
         log::info!(
@@ -516,7 +513,7 @@ async fn check_for_updates(
             version: String,
         }
 
-        let manifest_url = "https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/latest.json";
+        let manifest_url = format!("https://github.com/{UPDATE_REPOSITORY}/releases/latest/download/latest.json");
         let manifest_response = client
             .get(manifest_url)
             .header("User-Agent", "codex-usage-desktop")
@@ -561,7 +558,7 @@ async fn check_for_updates(
             version
         );
         let mut api_request = client
-            .get("https://api.github.com/repos/itvincent-git/codex-usage-desktop/releases/latest")
+            .get(format!("https://api.github.com/repos/{UPDATE_REPOSITORY}/releases/latest"))
             .header("User-Agent", "codex-usage-desktop")
             .header("Accept", "application/json");
 
@@ -569,11 +566,24 @@ async fn check_for_updates(
             api_request = api_request.header("If-None-Match", e);
         }
 
-        let response = api_request.send().map_err(|e| {
-            let err_msg = format!("Update check network request failed: {e}");
-            log::error!("{}", err_msg);
-            err_msg
-        })?;
+        let response = match api_request.send() {
+            Ok(response) => response,
+            Err(error) => {
+                // Release notes are optional; an unavailable GitHub API must not block updates.
+                log::warn!("Release notes request failed: {error}. Using updater manifest details.");
+                return Ok(UpdateCheckResponse {
+                    has_update: true,
+                    current_version,
+                    latest_version: version.clone(),
+                    latest_tag: format!("app-v{version}"),
+                    release_name: Some(format!("Codex Usage Desktop v{version}")),
+                    release_notes: None,
+                    release_url: format!("https://github.com/{UPDATE_REPOSITORY}/releases/latest"),
+                    etag: None,
+                    not_modified: Some(false),
+                });
+            }
+        };
 
         let status = response.status();
 
@@ -586,7 +596,7 @@ async fn check_for_updates(
                 latest_tag: format!("app-v{}", version),
                 release_name: Some(format!("Codex Usage Desktop v{}", version)),
                 release_notes: Some("A new update is available. Please view the release page for details.".to_string()),
-                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest".to_string(),
+                release_url: format!("https://github.com/{UPDATE_REPOSITORY}/releases/latest"),
                 etag,
                 not_modified: Some(true),
             });
@@ -601,7 +611,7 @@ async fn check_for_updates(
                 latest_tag: format!("app-v{}", version),
                 release_name: Some(format!("Codex Usage Desktop v{}", version)),
                 release_notes: None,
-                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest".to_string(),
+                release_url: format!("https://github.com/{UPDATE_REPOSITORY}/releases/latest"),
                 etag: None,
                 not_modified: Some(false),
             });
@@ -642,7 +652,7 @@ async fn check_for_updates(
                 latest_tag: format!("app-v{}", version),
                 release_name: Some(format!("Codex Usage Desktop v{}", version)),
                 release_notes: None,
-                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest".to_string(),
+                release_url: format!("https://github.com/{UPDATE_REPOSITORY}/releases/latest"),
                 etag: None,
                 not_modified: Some(false),
             });
@@ -675,9 +685,6 @@ async fn check_for_updates(
 async fn download_and_install_update(
     app: tauri::AppHandle,
 ) -> Result<UpdateInstallResponse, String> {
-    if !UPSTREAM_UPDATES_ENABLED {
-        return Err("个人修改版禁止安装官方更新，以保留个人修改。".into());
-    }
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
         .check()
@@ -721,7 +728,7 @@ async fn download_and_install_update(
         .await
         .map_err(|e| e.to_string())?;
 
-    log::info!("Update {version} installed. Waiting for user restart.");
+    log::info!("Update {version} installed. Automatically restarting.");
     Ok(UpdateInstallResponse { version })
 }
 

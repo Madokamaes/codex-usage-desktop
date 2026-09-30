@@ -1,1 +1,1 @@
-export const UPSTREAM_UPDATES_ENABLED = false;
+export const UPDATE_REPOSITORY = "Madokamaes/codex-usage-desktop";
