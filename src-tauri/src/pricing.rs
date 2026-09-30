@@ -17,12 +17,16 @@ const CACHE_VERSION: u32 = 2;
 const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 const FAILURE_RETRY_COOLDOWN_SECS: u64 = 15 * 60;
 const PROVIDER_PREFIXES: [&str; 3] = ["openai/", "azure/", "openrouter/openai/"];
-const CODEX_MODEL_PREFIXES: [&str; 5] = [
+const CODEX_MODEL_PREFIXES: [&str; 9] = [
     "gpt-5",
     "gpt-5-",
     "openai/gpt-5",
     "azure/gpt-5",
     "openrouter/openai/gpt-5",
+    "gpt-6",
+    "openai/gpt-6",
+    "azure/gpt-6",
+    "openrouter/openai/gpt-6",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -105,11 +109,12 @@ impl PricingSource {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .ok();
-        let cache = cache_path
+        let mut cache = cache_path
             .as_deref()
             .ok_or_else(|| "Pricing cache path missing".to_string())
             .and_then(read_cache)
             .unwrap_or_else(|_| embedded_cache());
+        supplement_embedded_pricing(&mut cache.pricing);
 
         Self {
             pricing: cache.pricing,
@@ -151,8 +156,9 @@ impl PricingSource {
             .and_then(|path| read_cache(path).ok())
             .unwrap_or_else(embedded_cache);
         hydrate_v2_success_timestamp(cache_path.as_deref(), &mut cache);
+        let supplemented = supplement_embedded_pricing(&mut cache.pricing);
 
-        let source = Self::from_cache(&cache, false);
+        let source = Self::from_cache(&cache, supplemented);
         let unchecked_models = requested_models
             .iter()
             .filter(|model| {
@@ -172,11 +178,17 @@ impl PricingSource {
             force || ((!unchecked_models.is_empty() || is_stale) && !in_failure_cooldown);
 
         if !should_refresh {
+            if supplemented {
+                if let Some(ref path) = cache_path {
+                    write_cache(path, &cache)?;
+                }
+            }
             return Ok(source);
         }
 
         match load_remote() {
-            Ok(remote_pricing) => {
+            Ok(mut remote_pricing) => {
+                supplement_embedded_pricing(&mut remote_pricing);
                 let checked_models = cache
                     .confirmed_missing_models
                     .union(&requested_models)
@@ -215,7 +227,7 @@ impl PricingSource {
                 if force {
                     Err(error)
                 } else {
-                    Ok(Self::from_cache(&cache, false))
+                    Ok(Self::from_cache(&cache, supplemented))
                 }
             }
         }
@@ -505,6 +517,9 @@ fn embedded_pricing() -> BTreeMap<String, LiteLlmModelPricing> {
         ("gpt-5.5-pro", 3.0e-5, 3.0e-6, 1.8e-4),
         ("gpt-5-mini", 2.5e-7, 2.5e-8, 2.0e-6),
         ("gpt-5-nano", 5.0e-8, 5.0e-9, 4.0e-7),
+        // Standard rates verified 2026-09-30 (USD/token):
+        // https://developers.openai.com/api/docs/models/gpt-6.1-sol
+        ("gpt-6.1-sol", 2.0e-6, 1.0e-7, 1.0e-5),
     ]
     .into_iter()
     .map(|(model, input, cached, output)| {
@@ -520,6 +535,17 @@ fn embedded_pricing() -> BTreeMap<String, LiteLlmModelPricing> {
         )
     })
     .collect()
+}
+
+fn supplement_embedded_pricing(pricing: &mut BTreeMap<String, LiteLlmModelPricing>) -> bool {
+    let mut changed = false;
+    for (model, fallback) in embedded_pricing() {
+        if let std::collections::btree_map::Entry::Vacant(entry) = pricing.entry(model) {
+            entry.insert(fallback);
+            changed = true;
+        }
+    }
+    changed
 }
 
 fn embedded_cache() -> PricingCache {
@@ -607,7 +633,8 @@ mod tests {
         }
     }
 
-    fn fresh_cache(pricing: BTreeMap<String, LiteLlmModelPricing>, now: u64) -> PricingCache {
+    fn fresh_cache(mut pricing: BTreeMap<String, LiteLlmModelPricing>, now: u64) -> PricingCache {
+        supplement_embedded_pricing(&mut pricing);
         PricingCache {
             version: CACHE_VERSION,
             is_complete: true,
@@ -633,6 +660,121 @@ mod tests {
         let cost = calculate_cost_usd(&usage, source.pricing_for_model("gpt-5.5"));
 
         assert!((cost - 0.0131).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn embedded_pricing_calculates_gpt_6_1_sol_cost() {
+        let source = PricingSource::embedded();
+        let usage = ModelUsage {
+            input_tokens: 1_000_000,
+            cached_input_tokens: 200_000,
+            output_tokens: 300_000,
+            reasoning_output_tokens: 100_000,
+            total_tokens: 1_300_000,
+            is_fallback: None,
+        };
+        let resolved = source.resolve_pricing_for_model("gpt-6.1-sol");
+
+        assert_eq!(resolved.status, PricingStatus::Priced);
+        assert_eq!(resolved.pricing.input_cost_per_m_token, 2.0);
+        assert!((resolved.pricing.cached_input_cost_per_m_token - 0.1).abs() < f64::EPSILON);
+        assert_eq!(resolved.pricing.output_cost_per_m_token, 10.0);
+        assert!((calculate_cost_usd(&usage, resolved.pricing) - 4.62).abs() < 1e-12);
+        for model in [
+            "openai/gpt-6.1-sol",
+            "azure/gpt-6.1-sol",
+            "gpt-6.1-sol-2026-09-29",
+        ] {
+            assert_eq!(source.pricing_for_model(model), resolved.pricing);
+        }
+    }
+
+    #[test]
+    fn fresh_cache_adds_gpt_6_1_sol_once_without_remote_refresh() {
+        let path = temp_pricing_cache_path("gpt-6-1-sol-upgrade");
+        let now = 50_000;
+        let mut cache = fresh_cache(BTreeMap::new(), now);
+        cache.pricing.remove("gpt-6.1-sol");
+        cache
+            .confirmed_missing_models
+            .insert("gpt-6.1-sol".to_string());
+        write_cache(&path, &cache).unwrap();
+
+        let cached = PricingSource::load_cached_or_embedded(Some(path.clone()));
+        assert_eq!(
+            cached.resolve_pricing_for_model("gpt-6.1-sol").status,
+            PricingStatus::Priced
+        );
+        assert!(!read_cache(&path)
+            .unwrap()
+            .pricing
+            .contains_key("gpt-6.1-sol"));
+
+        let load = |timestamp| {
+            PricingSource::load_with_options(
+                Some(path.clone()),
+                BTreeSet::from(["gpt-6.1-sol".to_string()]),
+                false,
+                timestamp,
+                || panic!("fresh cache should not fetch remote pricing"),
+            )
+            .unwrap()
+        };
+        let first = load(now + 1);
+        let second = load(now + 2);
+
+        assert!(first.was_refreshed());
+        assert!(!second.was_refreshed());
+        assert!(
+            (first
+                .pricing_for_model("gpt-6.1-sol")
+                .cached_input_cost_per_m_token
+                - 0.1)
+                .abs()
+                < f64::EPSILON
+        );
+        assert_eq!(
+            read_cache(&path).unwrap().last_successful_refresh_at,
+            Some(now)
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn remote_catalog_keeps_embedded_gpt_6_1_sol_and_prefers_remote_rates() {
+        let missing = PricingSource::load_with(None, || Ok(BTreeMap::new()));
+        assert_eq!(
+            missing.resolve_pricing_for_model("gpt-6.1-sol").status,
+            PricingStatus::Priced
+        );
+        let entry = missing
+            .catalog()
+            .models
+            .into_iter()
+            .find(|entry| entry.model == "gpt-6.1-sol")
+            .unwrap();
+        assert!((entry.cached_input_cost_per_million_tokens.unwrap() - 0.1).abs() < f64::EPSILON);
+
+        let updated = PricingSource::load_with(None, || {
+            Ok(BTreeMap::from([(
+                "gpt-6.1-sol".to_string(),
+                test_pricing(3e-6),
+            )]))
+        });
+        assert_eq!(
+            updated
+                .pricing_for_model("gpt-6.1-sol")
+                .input_cost_per_m_token,
+            3.0
+        );
+
+        let offline = PricingSource::load_with(None, || Err("offline".to_string()));
+        assert_eq!(
+            offline
+                .pricing_for_model("gpt-6.1-sol")
+                .output_cost_per_m_token,
+            10.0
+        );
     }
 
     #[test]

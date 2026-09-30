@@ -1,4 +1,8 @@
 {
+  "3.6.1": {
+    "zh": "- 接入 GPT-6.1 Sol 标准 API 价格：输入 $2.00、缓存输入 $0.10、输出 $10.00 / 百万 token\n- 旧缓存及远程目录缺少模型时补充内置价格，并重新计算已有费用\n- 包含个人版 CLI 超时修复、单实例保护及关闭官方应用更新",
+    "en": "- Add GPT-6.1 Sol standard API pricing: $2.00 input, $0.10 cached input, and $10.00 output per million tokens\n- Supplement missing cached and remote rates with embedded pricing and recalculate existing costs\n- Include personal build CLI timeout fixes, single-instance protection, and disabled upstream app updates"
+  },
   "3.6.0": {
     "zh": "- fix(tray): hide unavailable 5-hour limit\n- fix: refresh pricing for newly discovered models\n- feat: show current account details in tray menu\n- feat: show daily quota consumption percentages",
     "en": "- fix(tray): hide unavailable 5-hour limit\n- fix: refresh pricing for newly discovered models\n- feat: show current account details in tray menu\n- feat: show daily quota consumption percentages"
