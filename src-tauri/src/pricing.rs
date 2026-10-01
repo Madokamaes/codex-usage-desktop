@@ -13,6 +13,8 @@ use std::{
 const LITELLM_PRICING_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const MILLION: f64 = 1_000_000.0;
+// Subscription included-usage estimate, not API or purchased-credit billing.
+pub const FAST_USAGE_MULTIPLIER: f64 = 2.5;
 const CACHE_VERSION: u32 = 2;
 const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 const FAILURE_RETRY_COOLDOWN_SECS: u64 = 15 * 60;
@@ -428,9 +430,20 @@ pub fn calculate_cost_usd(usage: &ModelUsage, pricing: Pricing) -> f64 {
     let non_cached_input = (usage.input_tokens - usage.cached_input_tokens).max(0) as f64;
     let output = usage.output_tokens.max(0) as f64;
 
-    non_cached_input / MILLION * pricing.input_cost_per_m_token
+    let standard_cost = non_cached_input / MILLION * pricing.input_cost_per_m_token
         + cached_input / MILLION * pricing.cached_input_cost_per_m_token
-        + output / MILLION * pricing.output_cost_per_m_token
+        + output / MILLION * pricing.output_cost_per_m_token;
+
+    let fast_cost = usage.fast_usage.as_ref().map_or(0.0, |fast| {
+        let fast_input = fast.input_tokens.max(0).min(usage.input_tokens.max(0));
+        let fast_cached = fast.cached_input_tokens.max(0)
+            .min(fast_input).min(cached_input as i64);
+        let fast_output = fast.output_tokens.max(0).min(usage.output_tokens.max(0));
+        (fast_input - fast_cached) as f64 / MILLION * pricing.input_cost_per_m_token
+            + fast_cached as f64 / MILLION * pricing.cached_input_cost_per_m_token
+            + fast_output as f64 / MILLION * pricing.output_cost_per_m_token
+    });
+    standard_cost + (FAST_USAGE_MULTIPLIER - 1.0) * fast_cost
 }
 
 fn load_remote_pricing() -> Result<BTreeMap<String, LiteLlmModelPricing>, String> {
@@ -655,11 +668,56 @@ mod tests {
             reasoning_output_tokens: 0,
             total_tokens: 1_300,
             is_fallback: None,
+            fast_usage: None,
         };
 
         let cost = calculate_cost_usd(&usage, source.pricing_for_model("gpt-5.5"));
 
         assert!((cost - 0.0131).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn fast_usage_applies_subscription_multiplier_without_inflating_tokens() {
+        let pricing = PricingSource::embedded().pricing_for_model("gpt-6.1-sol");
+        for tier in ["fast", "priority"] {
+            let mut usage = ModelUsage {
+                input_tokens: 1_000_000, cached_input_tokens: 200_000,
+                output_tokens: 300_000, reasoning_output_tokens: 100_000,
+                total_tokens: 1_300_000, ..ModelUsage::default()
+            };
+            usage.apply_service_tier(Some(tier));
+            assert!((calculate_cost_usd(&usage, pricing) - 11.55).abs() < 1e-12);
+            assert_eq!(usage.total_tokens, 1_300_000);
+            assert_eq!(usage.output_tokens, 300_000);
+        }
+    }
+
+    #[test]
+    fn mixed_fast_and_standard_usage_only_weights_the_fast_subset() {
+        let pricing = PricingSource::embedded().pricing_for_model("gpt-6.1-sol");
+        let usage = ModelUsage {
+            input_tokens: 2_000_000, cached_input_tokens: 400_000,
+            output_tokens: 600_000, total_tokens: 2_600_000,
+            fast_usage: Some(crate::types::FastUsage {
+                input_tokens: 1_000_000, cached_input_tokens: 200_000,
+                output_tokens: 300_000,
+            }),
+            ..ModelUsage::default()
+        };
+        assert!((calculate_cost_usd(&usage, pricing) - 16.17).abs() < 1e-12);
+        assert_eq!(calculate_cost_usd(&usage, Pricing::free()), 0.0);
+    }
+
+    #[test]
+    fn legacy_usage_without_tier_records_keeps_standard_cost() {
+        let usage: ModelUsage = serde_json::from_value(serde_json::json!({
+            "inputTokens": 1_000_000, "cachedInputTokens": 200_000,
+            "outputTokens": 300_000, "reasoningOutputTokens": 0,
+            "totalTokens": 1_300_000
+        })).unwrap();
+        assert!(usage.fast_usage.is_none());
+        assert!((calculate_cost_usd(&usage, PricingSource::embedded()
+            .pricing_for_model("gpt-6.1-sol")) - 4.62).abs() < 1e-12);
     }
 
     #[test]
@@ -672,6 +730,7 @@ mod tests {
             reasoning_output_tokens: 100_000,
             total_tokens: 1_300_000,
             is_fallback: None,
+            fast_usage: None,
         };
         let resolved = source.resolve_pricing_for_model("gpt-6.1-sol");
 

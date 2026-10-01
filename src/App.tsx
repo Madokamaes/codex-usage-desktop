@@ -3,6 +3,7 @@ import { CodexResetHistoryModal } from "@/components/codex-reset-history";
 import { DailyUsageTable } from "@/components/daily-usage-table";
 import { DashboardHeroCard } from "@/components/dashboard-hero-card";
 import { DashboardHeader } from "@/components/dashboard-header";
+import { CurrentReleaseNotice } from "@/components/current-release-notice";
 import { LoadingState } from "@/components/loading-state";
 import { LogPanel } from "@/components/log-panel";
 import { ModelsPage } from "@/components/models-page";
@@ -300,6 +301,8 @@ export default function App() {
               </CardHeader>
             </Card>
           ) : null}
+
+          {view === "dashboard" ? <CurrentReleaseNotice /> : null}
 
           {isLoading ? <LoadingState title={loadingTitle} description={loadingDescription} /> : null}
 

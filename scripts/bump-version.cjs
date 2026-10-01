@@ -129,8 +129,10 @@ function updateChangelog(version) {
   // Order keys: put the new version at the top of the json object
   const newChangelog = {
     [version]: {
+      releasedAt: new Date().toISOString(),
       zh: bulletPoints,
-      en: bulletPoints
+      en: bulletPoints,
+      ja: bulletPoints
     },
     ...changelog
   };

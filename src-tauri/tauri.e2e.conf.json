@@ -1,8 +1,21 @@
 {
+  "identifier": "com.ccusage.codex.desktop.e2e",
+  "productName": "Codex Usage Desktop E2E",
   "build": {
     "beforeBuildCommand": "node node_modules/vite/bin/vite.js build --mode e2e"
   },
   "app": {
+    "windows": [{
+      "label": "main",
+      "title": "Codex Usage Desktop [测试窗口 · 独立数据]",
+      "width": 1440,
+      "height": 960,
+      "minWidth": 1100,
+      "minHeight": 760,
+      "resizable": true,
+      "focus": false,
+      "devtools": true
+    }],
     "withGlobalTauri": true,
     "security": {
       "capabilities": [

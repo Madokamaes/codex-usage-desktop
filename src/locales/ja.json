@@ -40,6 +40,7 @@
     "upgrade_title": "クリックしてアプリケーションをアップグレードします"
   },
   "update": {
+    "recent_changes": "最近の更新",
     "new_version": "新しいバージョンが利用可能: v{{version}}",
     "latest_badge": "最新",
     "banner_text": "Codex Usage Desktop の新しいバージョンが準備できました。現在 v{{currentVersion}} を使用しています。",

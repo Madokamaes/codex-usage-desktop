@@ -11,7 +11,8 @@ use std::{
     path::Path,
 };
 
-const QUOTA_PARSER_VERSION: i64 = 3;
+// Invalidate saved session rollups when either usage or quota parsing changes.
+const QUOTA_PARSER_VERSION: i64 = 4;
 
 pub fn open_database(database_path: &Path) -> Result<Connection, String> {
     let db = Connection::open(database_path).map_err(|error| error.to_string())?;
@@ -818,6 +819,7 @@ fn merge_daily_rows(rows: Vec<DailyUsageRow>) -> Vec<DailyUsageRow> {
 }
 
 fn merge_model_usage(target: &mut ModelUsage, usage: &ModelUsage) {
+    target.merge_fast_usage(usage);
     target.input_tokens += usage.input_tokens;
     target.cached_input_tokens += usage.cached_input_tokens;
     target.output_tokens += usage.output_tokens;

@@ -19,6 +19,7 @@ describe("GPT-6.1 Sol pricing", () => {
   it("shows GPT-6.1 Sol prices in the catalog", async () => {
     await $('[data-testid="models-nav-tab"]').waitForClickable({ timeout: 30_000 });
     await $('[data-testid="models-nav-tab"]').click();
+    await $('[data-testid="models-catalog-tab"]').waitForClickable({ timeout: 60_000 });
     await $('[data-testid="models-catalog-tab"]').click();
     const search = $('[data-testid="pricing-search"]');
     await search.waitForDisplayed({ timeout: 15_000 });

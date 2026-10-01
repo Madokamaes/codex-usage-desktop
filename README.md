@@ -222,6 +222,7 @@ Your Codex session content is sensitive. The app is designed to keep it on your 
 - Release packages support macOS on Apple Silicon and Intel, plus Windows 10/11 x64. Linux packages are not currently provided.
 - On Windows, only the default WSL distribution is considered when native sessions are empty; multiple distributions are not merged.
 - Usage and cost values are calculated from local Codex logs; cost figures are estimates based on the available model pricing.
+- Recorded Fast usage is estimated at 2.5x Standard using the included-subscription allowance convention. This is not an API invoice; usage without service-tier records retains the Standard estimate.
 - Unknown models default to zero estimated cost.
 - Session details depend on the information present in each local Codex log.
 - Codex session logs do not contain account identity, so attribution starts after this feature is enabled. Sessions that already existed at upgrade time are grouped under **Unknown account (pre-upgrade sessions)**. Resetting the usage cache preserves recorded account assignments.

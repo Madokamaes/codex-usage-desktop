@@ -290,6 +290,7 @@ fn load_session_file_with_quota(
     let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
     let mut previous_totals: Option<RawUsage> = None;
     let mut current_model: Option<String> = None;
+    let mut current_service_tier: Option<String> = None;
     let mut current_model_is_fallback = false;
     let mut current_project_path: Option<String> = None;
     let mut prompt_title = None;
@@ -323,6 +324,9 @@ fn load_session_file_with_quota(
 
         if entry_type == Some("turn_context") {
             let payload = entry.get("payload").unwrap_or(&Value::Null);
+            if let Some(tier) = payload.get("service_tier") {
+                current_service_tier = tier.as_str().map(str::to_owned);
+            }
             if let Some(model) = extract_model(payload) {
                 current_model = Some(model);
                 current_model_is_fallback = false;
@@ -338,6 +342,12 @@ fn load_session_file_with_quota(
         }
 
         let payload = entry.get("payload").unwrap_or(&Value::Null);
+        if payload.get("type").and_then(Value::as_str) == Some("thread_settings_applied") {
+            if let Some(tier) = payload.pointer("/thread_settings/service_tier") {
+                current_service_tier = tier.as_str().map(str::to_owned);
+            }
+            continue;
+        }
         if payload.get("type").and_then(Value::as_str) != Some("token_count") {
             continue;
         }
@@ -369,7 +379,12 @@ fn load_session_file_with_quota(
             continue;
         };
 
-        let usage = convert_to_delta(&raw);
+        let mut usage = convert_to_delta(&raw);
+        usage.apply_service_tier(
+            info.get("service_tier").and_then(Value::as_str)
+                .or_else(|| payload.get("service_tier").and_then(Value::as_str))
+                .or(current_service_tier.as_deref()),
+        );
         if usage.input_tokens == 0
             && usage.cached_input_tokens == 0
             && usage.output_tokens == 0
@@ -774,6 +789,7 @@ fn convert_to_delta(raw: &RawUsage) -> ModelUsage {
             raw.input_tokens + raw.output_tokens
         },
         is_fallback: None,
+        fast_usage: None,
     }
 }
 
@@ -946,6 +962,7 @@ fn add_usage_to_row(row: &mut DailyUsageRow, usage: &ModelUsage) {
 }
 
 fn add_usage(target: &mut ModelUsage, usage: &ModelUsage) {
+    target.merge_fast_usage(usage);
     target.input_tokens += usage.input_tokens;
     target.cached_input_tokens += usage.cached_input_tokens;
     target.output_tokens += usage.output_tokens;
@@ -979,6 +996,79 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn fast_costs_survive_mode_switches_cache_migration_and_account_aggregation() {
+        let temp_dir = tempfile_dir();
+        let codex_home = temp_dir.join(".codex");
+        let sessions = codex_home.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let path = sessions.join("mixed.jsonl");
+        let unit_event = |index: i64| token_event(
+            "2026-07-01T10:00:00Z", "gpt-6.1-sol",
+            index * 1_000_000, index * 200_000, index * 300_000, index * 1_300_000,
+            1_000_000, 200_000, 300_000, 1_300_000,
+        );
+        let settings = |tier: Value| serde_json::json!({
+            "type": "event_msg", "payload": {"type": "thread_settings_applied",
+                "thread_settings": {"service_tier": tier}}
+        }).to_string();
+        let mut actual_standard: Value = serde_json::from_str(&unit_event(5)).unwrap();
+        actual_standard["payload"]["info"]["service_tier"] = Value::from("default");
+        fs::write(&path, [
+            token_context_with_cwd("2026-07-01T10:00:00Z", "gpt-6.1-sol", "/repo/fast"),
+            unit_event(1), // No recorded tier: retain Standard estimate.
+            settings(Value::from("priority")), unit_event(2),
+            settings(Value::from("default")), unit_event(3),
+            settings(Value::from("fast")), unit_event(4),
+            actual_standard.to_string(), // Actual tier takes priority over settings.
+            settings(Value::Null), unit_event(6), // Explicit null clears Fast state.
+        ].join("\n")).unwrap();
+        // A separate legacy session verifies daily/project merging across files.
+        fs::write(sessions.join("legacy.jsonl"), [
+            token_context_with_cwd("2026-07-01T10:00:00Z", "gpt-6.1-sol", "/repo/fast"),
+            unit_event(1),
+        ].join("\n")).unwrap();
+        let mut db = crate::db::open_database(&temp_dir.join("usage.sqlite")).unwrap();
+        let pricing = PricingSource::embedded();
+        let scan = scan_codex_usage(&mut db, &pricing, Some(codex_home.clone()), Some("UTC".into())).unwrap();
+        assert_eq!(scan.metrics.files_parsed, 2);
+        db.execute("INSERT INTO usage_accounts VALUES ('historical-account', 'Historical account', '2026-07-01')", []).unwrap();
+        db.execute("UPDATE session_account_assignments SET account_id = 'historical-account', account_label = 'Historical account' WHERE path = ?",
+            [path.to_string_lossy().as_ref()]).unwrap();
+        db.execute("UPDATE session_file_rollups SET quota_parser_version = 3", []).unwrap();
+        let migrated = scan_codex_usage(&mut db, &pricing, Some(codex_home.clone()), Some("UTC".into())).unwrap();
+        assert_eq!(migrated.metrics.files_parsed, 2);
+        let cached = scan_codex_usage(&mut db, &pricing, Some(codex_home), Some("UTC".into())).unwrap();
+        assert_eq!(cached.metrics.files_reused, 2);
+        assert_eq!(cached.metrics.files_parsed, 0);
+        crate::db::recalculate_daily_costs(&mut db, &pricing).unwrap();
+        let rows = crate::db::query_all_daily_rows(&db).unwrap();
+        assert!((rows[0].cost_usd - 46.2).abs() < 1e-10);
+        assert_eq!(rows[0].total_tokens, 9_100_000);
+        let fast = rows[0].models["gpt-6.1-sol"].fast_usage.as_ref().unwrap();
+        assert_eq!(fast.input_tokens, 2_000_000);
+        assert_eq!(fast.cached_input_tokens, 400_000);
+        assert_eq!(fast.output_tokens, 600_000);
+        let range = "custom:2026-07-01_2026-07-01";
+        let overview = crate::overview::get_overview_for_account(&db, range, Some("UTC".into()),
+            &pricing, None).unwrap();
+        assert!((overview.totals.cost_usd - 46.2).abs() < 1e-10);
+        assert!((overview.models[0].cost_usd - 46.2).abs() < 1e-10);
+        assert!((overview.projects[0].cost_usd - 46.2).abs() < 1e-10);
+        let project = crate::overview::get_project_analytics_for_account(&db, "/repo/fast", range,
+            Some("UTC".into()), &pricing, None).unwrap();
+        assert!((project.summary.cost_usd - 46.2).abs() < 1e-10);
+        assert!((project.daily[0].cost_usd - 46.2).abs() < 1e-10);
+        let historical = crate::overview::get_overview_for_account(&db, range, Some("UTC".into()),
+            &pricing, Some("historical-account")).unwrap();
+        assert!((historical.totals.cost_usd - 41.58).abs() < 1e-10);
+        let unknown = crate::overview::get_overview_for_account(&db, range, Some("UTC".into()),
+            &pricing, Some(crate::accounts::UNKNOWN_ACCOUNT_ID)).unwrap();
+        assert!((unknown.totals.cost_usd - 4.62).abs() < 1e-10);
+        let records = crate::db::query_session_details(&db).unwrap();
+        assert!((records.iter().map(|record| record.cost_usd).sum::<f64>() - 46.2).abs() < 1e-10);
+    }
 
     #[test]
     fn imports_daily_codex_usage() {

@@ -1,4 +1,10 @@
 {
+  "3.8.5": {
+    "releasedAt": "2026-10-02T06:47:29+08:00",
+    "zh": "- 解决了 Fast 计费问题：按订阅内额度口径，将 Fast 用量按普通模式的 2.5 倍计入预估成本。\n- 识别会话内 Fast 切换，升级后重扫历史日志；未记录档位的用量沿用普通模式估算。\n- 首页显眼位置显示最近更新时间和主要修复。",
+    "en": "- Fix Fast cost estimates: apply the 2.5x included-subscription usage rate to Fast tokens.\n- Track Fast changes within sessions and rescan historical logs after upgrading; usage without tier records keeps the Standard estimate.\n- Show the latest update time and main fix prominently on the dashboard.",
+    "ja": "- Fast のコスト計算を修正：サブスクリプション内の利用枠に合わせ、Fast の使用量を通常モードの 2.5 倍で推定コストに反映。\n- セッション内の Fast 切り替えを識別し、更新後に過去のログを再解析。モードの記録がない使用量は通常モードとして推定。\n- ホーム画面に最新の更新日時と主な修正を表示。"
+  },
   "3.8.4": {
     "zh": "- 创建独立 Fork，主要新增功能为分账号会话额度统计\n- 接入 Madokamaes/codex-usage-desktop 的签名发布渠道，自动检查、下载、静默安装并重启\n- 自动清除原版更新缓存，更新失败后 1 小时重试\n- 保留 GPT-6.1 Sol API 价格及个人版修复",
     "en": "- Establish an independent fork focused on per-account session quota tracking\n- Automatically check, download, silently install, and restart for signed Madokamaes/codex-usage-desktop releases\n- Clear old upstream update caches and retry failed updates after one hour\n- Retain GPT-6.1 Sol API pricing and personal build fixes"

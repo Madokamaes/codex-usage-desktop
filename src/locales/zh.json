@@ -40,6 +40,7 @@
     "upgrade_title": "点击升级您的应用"
   },
   "update": {
+    "recent_changes": "最近更新",
     "new_version": "有新版本可用：v{{version}}",
     "latest_badge": "最新",
     "banner_text": "新版本的 Codex Usage Desktop 已就绪。您当前的运行版本是 v{{currentVersion}}。",

@@ -85,6 +85,14 @@ Known pitfalls to avoid:
 ## Git
 After completing the task, if there are no issues, commit the changes to Git. Write by Conventional Commits style in English.
 
+## Release notes
+
+Every release must include `releasedAt` in `changelog.json` and a short, user-facing
+first line in each supported language describing the main issue solved. The dashboard
+displays this first line, version, and update time prominently. Keep this notice current
+when bumping versions. Preserve the isolated e2e application identifier so native tests
+never share the running production client's database or updater state.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

@@ -116,6 +116,7 @@ pub fn get_overview_for_account(
     for row in rows_by_date.values() {
         for (model, usage) in &row.models {
             let summary = models_by_name.entry(model.clone()).or_default();
+            summary.merge_fast_usage(usage);
             summary.input_tokens += usage.input_tokens;
             summary.cached_input_tokens += usage.cached_input_tokens;
             summary.output_tokens += usage.output_tokens;
@@ -133,6 +134,7 @@ pub fn get_overview_for_account(
 
             for (model, model_usage) in &usage.models {
                 let summary_model = summary.models.entry(model.clone()).or_default();
+                summary_model.merge_fast_usage(model_usage);
                 summary_model.input_tokens += model_usage.input_tokens;
                 summary_model.cached_input_tokens += model_usage.cached_input_tokens;
                 summary_model.output_tokens += model_usage.output_tokens;
@@ -276,6 +278,7 @@ pub fn get_project_analytics_for_account(
             summary.total_tokens += usage.total_tokens;
             for (model, model_usage) in &usage.models {
                 let total = summary.models.entry(model.clone()).or_default();
+                total.merge_fast_usage(model_usage);
                 total.input_tokens += model_usage.input_tokens;
                 total.cached_input_tokens += model_usage.cached_input_tokens;
                 total.output_tokens += model_usage.output_tokens;
@@ -618,6 +621,7 @@ mod tests {
             reasoning_output_tokens: 0,
             total_tokens: 1_500_000,
             is_fallback: None,
+            fast_usage: None,
         };
 
         let priced = overview_model_row("gpt-5".to_string(), usage.clone(), &source);
@@ -706,6 +710,7 @@ mod tests {
                         reasoning_output_tokens: 0,
                         total_tokens: total,
                         is_fallback: None,
+                        fast_usage: None,
                     },
                 )]),
             }

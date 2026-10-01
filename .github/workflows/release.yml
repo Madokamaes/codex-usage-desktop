@@ -129,6 +129,9 @@ jobs:
             echo "Automatically downloads, verifies, installs, and restarts for signed updates from this repository."
             echo "Existing users must install a fork release once to switch update channels. Local usage data is retained."
             echo
+            echo "## Current update / 本次更新"
+            echo
+            node -e 'const release = require("./changelog.json")[process.env.RELEASE_TAG.slice(5)]; if (release) { if (release.releasedAt) console.log("Update time / 更新时间: " + release.releasedAt + "\n"); console.log(release.zh + "\n\n" + release.en + "\n"); }'
             echo "## What's Changed"
             echo
 

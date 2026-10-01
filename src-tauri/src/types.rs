@@ -19,6 +19,37 @@ pub struct ModelUsage {
     pub total_tokens: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_fallback: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast_usage: Option<FastUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FastUsage {
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+impl ModelUsage {
+    pub fn apply_service_tier(&mut self, service_tier: Option<&str>) {
+        if matches!(service_tier, Some("fast" | "priority")) {
+            self.fast_usage = Some(FastUsage {
+                input_tokens: self.input_tokens,
+                cached_input_tokens: self.cached_input_tokens,
+                output_tokens: self.output_tokens,
+            });
+        }
+    }
+
+    pub fn merge_fast_usage(&mut self, usage: &Self) {
+        if let Some(fast) = &usage.fast_usage {
+            let target = self.fast_usage.get_or_insert_with(FastUsage::default);
+            target.input_tokens += fast.input_tokens;
+            target.cached_input_tokens += fast.cached_input_tokens;
+            target.output_tokens += fast.output_tokens;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

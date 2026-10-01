@@ -40,6 +40,7 @@
     "upgrade_title": "Click to upgrade your application"
   },
   "update": {
+    "recent_changes": "Recent update",
     "new_version": "New update available: v{{version}}",
     "latest_badge": "Latest",
     "banner_text": "A newer version of Codex Usage Desktop is ready. You are currently on v{{currentVersion}}.",

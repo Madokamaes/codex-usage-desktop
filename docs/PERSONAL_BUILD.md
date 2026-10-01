@@ -47,9 +47,22 @@ Source: https://developers.openai.com/api/docs/models/gpt-6.1-sol
 Embedded rates supplement missing entries in cached and remote pricing catalogs;
 existing remote rates retain priority so future pricing refreshes can update them.
 Supplementing an old cache triggers the existing cost recalculation once.
-Cost estimates use the app's standard token pricing; cache writes, long-context
-premiums, Fast/Batch/Flex tiers, and regional processing premiums are not inferred
-from aggregate Codex usage logs.
+Version 3.8.5 estimates Fast usage at **2.5x Standard**, matching the included
+subscription allowance convention. The scanner reads `thread_settings_applied`
+service tiers (`priority` and `fast`), supports in-session switches, and gives an
+explicit token-event tier priority over thread settings. Input, cached input, and
+output costs are weighted separately; raw token totals are not multiplied.
+This is a subscription-equivalent cost estimate, not an API or purchased-credit
+invoice. Missing tier records retain the Standard estimate. Cache writes,
+long-context premiums, Batch/Flex tiers, and regional premiums remain unsupported.
+The session parser version invalidates existing rollups once after upgrade;
+account assignments are retained and historical logs are reparsed automatically.
+
+Every release must provide `releasedAt` and a concise first changelog line in each
+supported language. The dashboard displays that main fix, version, and timestamp
+in UTC+8 prominently, including while usage data is loading. Native e2e builds
+use a separate application identifier to keep production data and updater state
+isolated. Do not copy or launch build artifacts over the user's running client.
 
 All usage entry points share a backend query cache: successful results last 15 seconds,
 errors last 60 seconds. CLI fallback results (success or error) last 60 seconds. Calls queued

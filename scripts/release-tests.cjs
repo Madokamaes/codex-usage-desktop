@@ -97,7 +97,9 @@ function runPnpm(root, ...args) {
 
 function assertRelease(root, version) {
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version, version);
-  assert.ok(JSON.parse(fs.readFileSync(path.join(root, 'changelog.json')))[version]);
+  const release = JSON.parse(fs.readFileSync(path.join(root, 'changelog.json')))[version];
+  assert.ok(release);
+  assert.ok(Number.isFinite(Date.parse(release.releasedAt)), 'Every release must have an update timestamp');
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'src-tauri', 'tauri.conf.json'))).version, version);
   assert.match(fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.toml'), 'utf8'), new RegExp(`version = "${version}"`));
   assert.match(fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.lock'), 'utf8'), new RegExp(`version = "${version}"`));

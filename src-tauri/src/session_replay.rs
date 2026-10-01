@@ -1725,6 +1725,7 @@ fn convert_to_delta(raw: &RawUsage) -> ModelUsage {
             raw.input_tokens + raw.output_tokens
         },
         is_fallback: None,
+        fast_usage: None,
     }
 }
 
