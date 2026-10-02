@@ -68,7 +68,7 @@ function isNewerVersion(current: string, target: string): boolean {
 export const AUTO_REFRESH_INTERVAL_OPTIONS = [1, 2, 3, 4, 5, 15, 30, 60] as const;
 export type AutoRefreshIntervalMinutes = (typeof AUTO_REFRESH_INTERVAL_OPTIONS)[number];
 const DEFAULT_AUTO_REFRESH_INTERVAL_MINUTES: AutoRefreshIntervalMinutes = 5;
-const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60_000;
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60_000;
 const UPDATE_CHECK_RETRY_MS = 60 * 60_000;
 const CODEX_QUOTA_FORECAST_URL = "https://codexreset.app/";
 const CHATGPT_USAGE_URL = "https://chatgpt.com/#settings/Usage";
@@ -496,7 +496,7 @@ export function useUsageDashboard() {
       // 1. If we recently failed, enforce a 1-hour cooldown before trying again
       if (lastCheckFailedTimeStr) {
         const lastCheckFailedTime = parseInt(lastCheckFailedTimeStr, 10);
-        if (now - lastCheckFailedTime < 3600000) {
+        if (now - lastCheckFailedTime < UPDATE_CHECK_RETRY_MS) {
           if (cachedInfo) {
             setUpdateInfo(cachedInfo);
             if (cachedInfo.hasUpdate) {
@@ -510,11 +510,10 @@ export function useUsageDashboard() {
         }
       }
 
-      // 2. If we had a successful check within the last 24 hours, use it
+      // 2. Reuse successful checks for the same interval as the background timer.
       if (lastCheckTimeStr && cachedInfo) {
         const lastCheckTime = parseInt(lastCheckTimeStr, 10);
-        // Cache for 24 hours to prevent hitting GitHub API rate limit during hot reloads or frequent restarts
-        if (now - lastCheckTime < 86400000) {
+        if (now - lastCheckTime < UPDATE_CHECK_INTERVAL_MS) {
           setUpdateInfo(cachedInfo);
           if (cachedInfo.hasUpdate) {
             const dismissedTag = localStorage.getItem("dismissed_update_tag");
@@ -615,8 +614,6 @@ export function useUsageDashboard() {
     void scanAndReloadOverview(startedAt).catch((scanError: unknown) => {
       setError(errorMessage(scanError, "Background refresh failed."));
     });
-
-    void runBackgroundUpdateCheck();
   });
 
   const handleBackgroundRefreshCompleted = useEffectEvent(async (refresh: UsageRefreshResponse) => {
@@ -681,7 +678,10 @@ export function useUsageDashboard() {
       }, Math.max(0, nextCheckAt - now));
     };
 
-    scheduleNextCheck();
+    // The first check writes the cache/cooldown before we schedule the next one.
+    void runBackgroundUpdateCheck().finally(() => {
+      if (!cancelled) scheduleNextCheck();
+    });
 
     return () => {
       cancelled = true;
@@ -689,7 +689,7 @@ export function useUsageDashboard() {
         window.clearTimeout(timer);
       }
     };
-  }, [bootstrapped, runBackgroundUpdateCheck]);
+  }, [bootstrapped]);
 
   // Re-fetch usage when the page/window regains focus after the configured refresh interval.
   useEffect(() => {

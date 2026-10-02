@@ -1,6 +1,16 @@
 import { $, browser, expect } from "@wdio/globals";
 
 describe("Fork automatic updates", () => {
+  before(async () => {
+    // Clear simulated releases left by interrupted runs before bootstrapping the app.
+    await browser.execute(() => {
+      for (const key of ["last_update_check_result", "last_update_check_time", "last_update_check_failed_time", "last_update_install_failed_time", "dismissed_update_tag"]) {
+        localStorage.removeItem(key);
+      }
+    });
+    await browser.refresh();
+  });
+
   it("enables native update checks and explains automatic installation", async () => {
     const result = await browser.execute(async () => {
       try {

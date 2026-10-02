@@ -259,7 +259,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Reset cache" })).not.toBeInTheDocument();
   });
 
-  it("checks for updates again after the app stays open for 24 hours", async () => {
+  it("reuses a fresh update cache until five minutes have elapsed", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-03T00:00:00.000Z"));
     localStorage.setItem("last_update_check_time", Date.now().toString());
@@ -282,7 +282,7 @@ describe("App", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("check_for_updates");
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000 - 1);
+      await vi.advanceTimersByTimeAsync(5 * 60_000 - 1);
     });
     expect(invokeMock).not.toHaveBeenCalledWith("check_for_updates");
 
@@ -290,6 +290,61 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(invokeMock).toHaveBeenCalledWith("check_for_updates");
+  });
+
+  it("checks on first launch and every five minutes without accumulating cached results", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-03T00:00:00.000Z"));
+    mockLoadedDashboard();
+    render(<StrictMode><App /></StrictMode>);
+
+    const checks = () => invokeMock.mock.calls.filter(([command]) => command === "check_for_updates");
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(checks()).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000 - 1); });
+    expect(checks()).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(checks()).toHaveLength(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000); });
+    expect(checks()).toHaveLength(3);
+    expect(localStorage.getItem("last_update_check_time")).toBe(Date.now().toString());
+    expect(Object.keys(localStorage).filter((key) => key.startsWith("last_update_check_"))).toEqual(
+      expect.arrayContaining(["last_update_check_time", "last_update_check_result"]),
+    );
+    expect(Object.keys(localStorage).filter((key) => key.startsWith("last_update_check_"))).toHaveLength(2);
+  });
+
+  it("checks at startup when an old-version cache is more than five minutes old", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-03T00:00:00.000Z"));
+    localStorage.setItem("last_update_check_time", (Date.now() - 6 * 60_000).toString());
+    localStorage.setItem("last_update_check_result", JSON.stringify({
+      hasUpdate: false, currentVersion: "3.8.5", latestVersion: "3.8.5", latestTag: "app-v3.8.5",
+    }));
+    mockLoadedDashboard();
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(invokeMock).toHaveBeenCalledWith("check_for_updates");
+    expect(localStorage.getItem("last_update_check_time")).toBe(Date.now().toString());
+  });
+
+  it("waits one hour after a failed startup check instead of retrying every five minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-03T00:00:00.000Z"));
+    mockLoadedDashboard();
+    const dashboard = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation(async (command: string, args?: any) => {
+      if (command === "check_for_updates") throw new Error("Update manifest request failed");
+      return dashboard(command, args);
+    });
+    render(<App />);
+    const checks = () => invokeMock.mock.calls.filter(([command]) => command === "check_for_updates");
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(checks()).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60_000 - 1); });
+    expect(checks()).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(checks()).toHaveLength(2);
   });
 
   it("prevents the default page context menu", () => {
@@ -2904,15 +2959,12 @@ describe("App", () => {
 
     render(<App />);
 
-    // Wait for the overview to load
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument());
-
-    // The update banner should NOT be in the document
+    await waitFor(() => {
+      const parsedCache = JSON.parse(localStorage.getItem("last_update_check_result") || "{}");
+      expect(parsedCache.hasUpdate).toBe(false);
+      expect(parsedCache.currentVersion).toBe(tauriConfig.version);
+    });
     expect(screen.queryByText(/New update available/i)).not.toBeInTheDocument();
-    
-    // Check that the cached result in localStorage was corrected to hasUpdate = false
-    const parsedCache = JSON.parse(localStorage.getItem("last_update_check_result") || "{}");
-    expect(parsedCache.hasUpdate).toBe(false);
-    expect(parsedCache.currentVersion).toBe(tauriConfig.version);
+    expect(invokeMock).not.toHaveBeenCalledWith("download_and_install_update");
   });
 });

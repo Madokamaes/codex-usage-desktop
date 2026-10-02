@@ -1,4 +1,10 @@
 {
+  "3.8.6": {
+    "releasedAt": "2026-10-01T23:52:52.600Z",
+    "zh": "- 解决了自动更新发现延迟的问题：检查间隔和结果缓存有效期缩短为 5 分钟。\n- 修正首次检查后的计时，持续运行时自动检查、下载、安装并重启；失败后保留 1 小时重试冷却。\n- 仅缓存最近一次检查结果和时间，不累计保存响应。",
+    "en": "- Reduce automatic update detection delays: shorten checks and cached results to 5 minutes.\n- Schedule the next check after the first finishes, with automatic download, installation, and restart; retain a one-hour retry cooldown after failures.\n- Cache only the latest check result and timestamp without accumulating responses.",
+    "ja": "- 自動更新の検出遅延を改善：確認間隔と結果キャッシュの有効期間を 5 分に短縮。\n- 初回確認の完了後に次回確認を予約し、自動ダウンロード・インストール・再起動を継続。失敗時は 1 時間後に再試行。\n- 最新の確認結果と時刻のみを保存し、応答を蓄積しません。"
+  },
   "3.8.5": {
     "releasedAt": "2026-10-02T06:47:29+08:00",
     "zh": "- 解决了 Fast 计费问题：按订阅内额度口径，将 Fast 用量按普通模式的 2.5 倍计入预估成本。\n- 识别会话内 Fast 切换，升级后重扫历史日志；未记录档位的用量沿用普通模式估算。\n- 首页显眼位置显示最近更新时间和主要修复。",

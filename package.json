@@ -1,6 +1,6 @@
 {
   "name": "codex-usage-desktop",
-  "version": "3.8.5",
+  "version": "3.8.6",
   "private": true,
   "type": "module",
   "description": "Codex Usage Desktop fork with per-account session quota tracking and automatic updates.",

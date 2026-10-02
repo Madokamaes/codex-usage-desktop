@@ -14,16 +14,16 @@ it("shows the current version's dated main fix in Chinese", async () => {
   render(<CurrentReleaseNotice />);
   const notice = screen.getByRole("region", { name: "最近更新" });
   expect(notice).toHaveTextContent(`v${tauriConfig.version}`);
-  expect(notice).toHaveTextContent("解决了 Fast 计费问题");
-  expect(notice).toHaveTextContent("2.5 倍");
+  expect(notice).toHaveTextContent("解决了自动更新发现延迟的问题");
+  expect(notice).toHaveTextContent("5 分钟");
   expect(notice).toHaveTextContent("UTC+8");
-  expect(notice.querySelector("time")).toHaveAttribute("datetime", changelog["3.8.5"].releasedAt);
+  expect(notice.querySelector("time")).toHaveAttribute("datetime", changelog["3.8.6"].releasedAt);
 });
 
 it("selects a localized summary instead of exposing release JSON", async () => {
   await i18n.changeLanguage("en");
   render(<CurrentReleaseNotice />);
   const notice = screen.getByRole("region", { name: "Recent update" });
-  expect(notice).toHaveTextContent("Fix Fast cost estimates");
+  expect(notice).toHaveTextContent("Reduce automatic update detection delays");
   expect(notice).not.toHaveTextContent("releasedAt");
 });

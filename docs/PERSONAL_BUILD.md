@@ -12,7 +12,10 @@ identity remain unknown. Live limit cards still describe the currently authentic
 This fork checks its own public GitHub Releases manifest in the background, then downloads,
 verifies the updater signature, installs, and restarts automatically. Windows uses a quiet
 current-user NSIS update; macOS replaces the app and requests restart after installation.
-Successful checks are cached for 24 hours; failed checks and failed installations retry
+From 3.8.6, successful checks are cached for five minutes and checked again while the app
+remains running. The first check completes before scheduling the next one, including on a
+fresh installation. Only the latest result and timestamp are retained; responses do not
+accumulate. Failed checks and failed installations retry
 after one hour while the app remains running. A dismissed notification does not defer updates.
 The settings page retains a manual check/retry control and shows progress or failures.
 Local usage databases and account assignments are retained across installations.
